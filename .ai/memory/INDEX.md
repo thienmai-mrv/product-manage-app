@@ -1,37 +1,37 @@
 # Memory Index
 
-Last refreshed: UNINITIALIZED
+Last refreshed: 2026-11-02
 
 ## Core (required)
 
 | File | Purpose | Status |
 |---|---|---|
-| [STATUS.md](STATUS.md) | Approval lifecycle | present |
-| [approvals.md](approvals.md) | GM0 / GM5 log | present |
-| [project-overview.md](project-overview.md) | What the product is | scaffold |
-| [architecture.md](architecture.md) | System structure and data flow | scaffold |
-| [domain-model.md](domain-model.md) | Entities and business rules | scaffold |
-| [tech-stack.md](tech-stack.md) | Languages, frameworks, tooling | scaffold |
-| [conventions.md](conventions.md) | Coding and repo conventions | scaffold |
-| [runtime-parity.md](runtime-parity.md) | Express vs Cloudflare Worker rules | scaffold |
-| [security.md](security.md) | Secrets, validation, trust boundaries | scaffold |
-| [testing.md](testing.md) | How to test and what “done” means | scaffold |
-| [glossary.md](glossary.md) | Shared terms | scaffold |
-| [known-issues.md](known-issues.md) | Known limitations and debt | scaffold |
+| [STATUS.md](STATUS.md) | Approval lifecycle | pending-approval, version 1 |
+| [approvals.md](approvals.md) | GM0 / GM5 log | present, human-only, no GM0 row yet |
+| [project-overview.md](project-overview.md) | What the product is | current |
+| [architecture.md](architecture.md) | System structure and data flow | current |
+| [domain-model.md](domain-model.md) | Entities and business rules | current |
+| [tech-stack.md](tech-stack.md) | Languages, frameworks, tooling | current |
+| [conventions.md](conventions.md) | Coding and repo conventions | current |
+| [runtime-parity.md](runtime-parity.md) | Express vs Cloudflare Worker rules | current |
+| [security.md](security.md) | Secrets, validation, trust boundaries | current |
+| [testing.md](testing.md) | How to test and what “done” means | current |
+| [glossary.md](glossary.md) | Shared terms | current |
+| [known-issues.md](known-issues.md) | Known limitations and debt | current |
 
 ## Catalogs (created as needed)
 
 | Directory | Purpose |
 |---|---|
-| [modules/](modules/) | Per-module memory (`products`, `categories`, `dashboard`, …) |
-| [apis/](apis/) | Per-route or per-resource API memory |
-| [decisions/](decisions/) | Architecture Decision Records |
-| [changelog/](changelog/) | One entry per feature that updated memory |
-| [reports/](reports/) | Init and update agent reports |
+| [modules/](modules/) | [products](modules/products.md), [categories](modules/categories.md), [dashboard](modules/dashboard.md), [store](modules/store.md) |
+| [apis/](apis/) | [products](apis/products.md), [categories](apis/categories.md), [pages](apis/pages.md) |
+| [decisions/](decisions/) | [001 dual runtime](decisions/001-dual-express-worker-runtime.md), [002 per-request Mongo client](decisions/002-per-request-mongo-client.md), [003 URI outside source](decisions/003-mongodb-uri-outside-source.md) |
+| [changelog/](changelog/) | Empty until the first memory update |
+| [reports/](reports/) | [init-report.md](reports/init-report.md) |
 
 ## Templates
 
-Copy from [_templates/](_templates/) when creating a new module, API, decision, or changelog entry.
+Copy from [_templates/](_templates/) when creating a new module, API, decision, or changelog entry. Templates were not modified by memory init.
 
 ## Reading order for feature agents
 

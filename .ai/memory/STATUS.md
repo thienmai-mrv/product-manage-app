@@ -1,10 +1,10 @@
 # Memory Status
 
-**Lifecycle:** uninitialized
-**Version:** 0
-**Last agent:** none
+**Lifecycle:** pending-approval
+**Version:** 1
+**Last agent:** memory-init
 **Last change:** none
-**Pending files:** all core files
+**Pending files:** none — core files, modules, APIs, and decisions are filled; GM0 has not been recorded
 **Approved by:** none
 **Approved at:** none
 
@@ -19,3 +19,5 @@
 | `rejected` | Human rejected. Re-run Init or Update with notes from `approvals.md`. |
 
 Feature stages (`analyst` and later) must see `Lifecycle: approved`. After a Memory Update Agent run, lifecycle becomes `pending-approval` until GM5.
+
+This baseline is waiting for a human GM0 decision in `approvals.md`. The init agent does not set `approved`.
