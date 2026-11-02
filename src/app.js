@@ -7,7 +7,7 @@ import productRoutes from "./routes/products.js";
 
 const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const webDir = path.join(rootDir, "web");
-const pagePaths = ["/products", "/categories"];
+const pagePaths = ["/dashboard", "/products", "/categories"];
 
 /**
  * Turn a thrown store error into a JSON response.
@@ -58,7 +58,7 @@ function sendPage(vite) {
 
 /**
  * Build the Express app.
- * Express serves the API and the Product and Category page routes.
+ * Express serves the API and the Dashboard, Product, and Category page routes.
  *
  * @param options.dev True when Vite should transform the React pages
  * @return Express app
@@ -89,7 +89,7 @@ export async function createApp({ dev = false } = {}) {
   }
 
   app.get("/", (req, res) => {
-    res.redirect("/products");
+    res.redirect("/dashboard");
   });
   app.get(pagePaths, sendPage(vite));
 

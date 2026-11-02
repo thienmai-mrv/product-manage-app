@@ -1,6 +1,6 @@
 # product-manage-app
 
-Sample product catalog with a React frontend and an Express backend. Express serves the JSON API and the Product and Category pages. The same API runs on a Cloudflare Worker for deployment. The page layout follows the json-config-server admin UI.
+Sample product catalog with a React frontend and an Express backend. Express serves the JSON API and the Dashboard, Product, and Category pages. The same API runs on a Cloudflare Worker for deployment. The admin page layout follows the json-config-server admin UI.
 
 Products and categories are stored in MongoDB. `MONGODB_URI` is an environment secret and is never written into `wrangler.toml`.
 
@@ -13,7 +13,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000. `/` redirects to `/products`. The first API call creates the sample categories and products when both collections are empty.
+Open http://localhost:3000. `/` redirects to `/dashboard`. The first API call creates the sample categories and products when both collections are empty.
 
 `npm start` builds the React app and serves `web/dist` without the Vite dev server. It reads the same `.env` file.
 
@@ -51,7 +51,8 @@ In Atlas **Network Access**, allow `0.0.0.0/0`. Workers do not have a fixed outb
 
 | Method | Path | Body |
 |---|---|---|
-| GET | `/` | Redirects to `/products`. |
+| GET | `/` | Redirects to `/dashboard`. |
+| GET | `/dashboard` | React dashboard page. |
 | GET | `/products` | React product page. |
 | GET | `/categories` | React category page. |
 | GET | `/api/products` | Lists products. |

@@ -115,7 +115,7 @@ async function route(request, env) {
   }
 
   if (url.pathname === "/" && request.method === "GET") {
-    return Response.redirect(new URL("/products", url), 302);
+    return Response.redirect(new URL("/dashboard", url), 302);
   }
 
   if (!env.ASSETS?.fetch) {
