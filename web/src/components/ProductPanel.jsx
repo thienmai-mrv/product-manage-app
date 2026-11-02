@@ -1,4 +1,26 @@
+import { useState } from "react";
 import { formatPrice } from "../catalogView.js";
+
+/**
+ * Show the stored product image, or the placeholder when it is missing or fails.
+ *
+ * @param props.product Catalog product
+ * @return Image or placeholder
+ */
+function ProductImage({ product }) {
+  const [failed, setFailed] = useState(false);
+  if (!product.imageUrl || failed) {
+    return <ProductPlaceholder />;
+  }
+  return (
+    <img
+      className="product-photo"
+      src={product.imageUrl}
+      alt=""
+      onError={() => setFailed(true)}
+    />
+  );
+}
 
 /**
  * Draw the static product mark used when a product has no image.
@@ -59,7 +81,7 @@ function FeaturedTile({ product }) {
   return (
     <article className="product-card product-card-featured">
       <div className="image-well image-well-featured">
-        <ProductPlaceholder />
+        <ProductImage product={product} />
       </div>
       <div className="featured-caption">
         {product.categoryName ? <p className="featured-category">{product.categoryName}</p> : null}
@@ -81,7 +103,7 @@ function ProductCard({ product, saved, onToggleSaved }) {
   return (
     <article className="product-card">
       <div className="image-well">
-        <ProductPlaceholder />
+        <ProductImage product={product} />
         <button
           type="button"
           className={saved ? "heart is-saved" : "heart"}

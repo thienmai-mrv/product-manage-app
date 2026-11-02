@@ -102,6 +102,8 @@ async function ensureSeed(db) {
         price: 24.5,
         categoryId: "cat-electronics",
         description: "Compact Bluetooth mouse",
+        imageUrl: "",
+        quantity: 10,
         createdAt: now,
       },
       {
@@ -111,6 +113,8 @@ async function ensureSeed(db) {
         price: 18,
         categoryId: "cat-books",
         description: "Illustrated pocket guide",
+        imageUrl: "",
+        quantity: 8,
         createdAt: now,
       },
       {
@@ -120,6 +124,8 @@ async function ensureSeed(db) {
         price: 39,
         categoryId: "cat-home",
         description: "Adjustable LED lamp",
+        imageUrl: "",
+        quantity: 5,
         createdAt: now,
       },
     ]);
@@ -170,6 +176,47 @@ function requiredPrice(value) {
 }
 
 /**
+ * Read an optional product image URL.
+ * An empty value means the product has no image. Only http and https are accepted.
+ *
+ * @param value Raw image URL
+ * @return Trimmed URL, or an empty string
+ */
+function optionalImageUrl(value) {
+  const text = optionalText(value);
+  if (!text) {
+    return "";
+  }
+  if (text.length > 2048) {
+    throw httpError(400, "Image URL is too long");
+  }
+  let url;
+  try {
+    url = new URL(text);
+  } catch {
+    throw httpError(400, "Image must be an http or https URL");
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw httpError(400, "Image must be an http or https URL");
+  }
+  return text;
+}
+
+/**
+ * Read a stock quantity that is a whole number and zero or greater.
+ *
+ * @param value Raw quantity
+ * @return Quantity
+ */
+function requiredQuantity(value) {
+  const quantity = Number(value);
+  if (!Number.isInteger(quantity) || quantity < 0) {
+    throw httpError(400, "Quantity must be a whole number that is zero or greater");
+  }
+  return quantity;
+}
+
+/**
  * Turn a duplicate-key error into a category conflict.
  *
  * @param error Caught error
@@ -216,6 +263,8 @@ function toProduct(doc, categories) {
     categoryId: doc.categoryId,
     categoryName: category?.name || "",
     description: doc.description ?? "",
+    imageUrl: doc.imageUrl ?? "",
+    quantity: Number.isInteger(doc.quantity) ? doc.quantity : 0,
     createdAt: doc.createdAt,
     ...(doc.updatedAt ? { updatedAt: doc.updatedAt } : {}),
   };
@@ -374,6 +423,8 @@ export function addProduct(env, input) {
       price: requiredPrice(input?.price),
       categoryId,
       description: optionalText(input?.description),
+      imageUrl: optionalImageUrl(input?.imageUrl),
+      quantity: requiredQuantity(input?.quantity),
       createdAt: new Date().toISOString(),
     };
     await db.collection("products").insertOne(product);
@@ -409,6 +460,8 @@ export function updateProduct(env, id, input) {
       price: requiredPrice(input?.price),
       categoryId,
       description: optionalText(input?.description),
+      imageUrl: optionalImageUrl(input?.imageUrl),
+      quantity: requiredQuantity(input?.quantity),
       updatedAt,
     };
     await products.updateOne(
@@ -420,6 +473,8 @@ export function updateProduct(env, id, input) {
           price: product.price,
           categoryId: product.categoryId,
           description: product.description,
+          imageUrl: product.imageUrl,
+          quantity: product.quantity,
           updatedAt,
         },
       },

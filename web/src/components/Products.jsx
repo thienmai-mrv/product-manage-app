@@ -9,6 +9,8 @@ const emptyForm = {
   price: "",
   categoryId: "",
   description: "",
+  imageUrl: "",
+  quantity: "1",
 };
 
 /**
@@ -34,6 +36,7 @@ export default function Products() {
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState("");
+  const [cart, setCart] = useState({});
 
   useEffect(() => {
     let cancelled = false;
@@ -88,6 +91,8 @@ export default function Products() {
       price: item.price ?? "",
       categoryId: item.categoryId || "",
       description: item.description || "",
+      imageUrl: item.imageUrl || "",
+      quantity: item.quantity ?? 0,
     });
   }
 
@@ -116,6 +121,23 @@ export default function Products() {
       setError("Category is required");
       return;
     }
+    const quantity = Number(form.quantity);
+    if (!Number.isInteger(quantity) || quantity < 0) {
+      setError("Quantity must be a whole number that is zero or greater");
+      return;
+    }
+    const imageUrl = form.imageUrl.trim();
+    if (imageUrl) {
+      try {
+        const url = new URL(imageUrl);
+        if (url.protocol !== "http:" && url.protocol !== "https:") {
+          throw new Error("bad protocol");
+        }
+      } catch {
+        setError("Image must be an http or https URL");
+        return;
+      }
+    }
     setSaving(true);
     setError("");
     try {
@@ -129,6 +151,8 @@ export default function Products() {
           price: form.price,
           categoryId: form.categoryId,
           description: form.description,
+          imageUrl,
+          quantity,
         }),
       });
       setItems((current) => {
@@ -162,6 +186,14 @@ export default function Products() {
         fallback: "Could not delete the product",
       });
       setItems((current) => current.filter((row) => row.id !== item.id));
+      setCart((current) => {
+        if (!current[item.id]) {
+          return current;
+        }
+        const next = { ...current };
+        delete next[item.id];
+        return next;
+      });
       if (form?.id === item.id) {
         setForm(null);
       }
@@ -172,9 +204,55 @@ export default function Products() {
     }
   }
 
+  /**
+   * Add one unit of a product to the in-memory cart.
+   * The cart cannot exceed the product's stored quantity.
+   *
+   * @param item Product row
+   */
+  function addToCart(item) {
+    setError("");
+    setCart((current) => {
+      const inCart = current[item.id] || 0;
+      if (inCart >= item.quantity) {
+        return current;
+      }
+      return { ...current, [item.id]: inCart + 1 };
+    });
+  }
+
+  const cartCount = Object.values(cart).reduce((sum, count) => sum + count, 0);
+  const cartLines = items.filter((item) => cart[item.id]);
+
   return (
     <>
       {error && <p className="message error">{error}</p>}
+      <section className="cart-summary" aria-label="Cart">
+        <h2>Cart</h2>
+        <p className="cart-count">{cartCount} items</p>
+        {cartLines.length === 0 ? <p className="cart-empty">No products in the cart.</p> : null}
+        {cartLines.length > 0 ? (
+          <ul className="cart-lines">
+            {cartLines.map((item) => (
+              <li key={item.id}>
+                {item.imageUrl ? <img className="product-thumb" src={item.imageUrl} alt="" /> : null}
+                <span>{item.name}</span>
+                <span>{cart[item.id]}</span>
+                <button type="button" className="secondary" onClick={() => {
+                  setCart((current) => {
+                    const next = { ...current };
+                    delete next[item.id];
+                    return next;
+                  });
+                }}
+                >
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </section>
       <div className="toolbar">
         <button type="button" className="primary" onClick={openAdd}>
           Add
@@ -215,6 +293,26 @@ export default function Products() {
             Description
             <textarea value={form.description} onChange={(event) => updateForm("description", event.target.value)} />
           </label>
+          <label>
+            Product Image
+            <input
+              type="url"
+              inputMode="url"
+              placeholder="https://"
+              value={form.imageUrl}
+              onChange={(event) => updateForm("imageUrl", event.target.value)}
+            />
+          </label>
+          <label>
+            Quantity
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={form.quantity}
+              onChange={(event) => updateForm("quantity", event.target.value)}
+            />
+          </label>
           <div className="form-actions">
             <button type="submit" className="primary" disabled={saving}>
               {saving ? "Saving…" : "Save"}
@@ -234,6 +332,8 @@ export default function Products() {
               <th className="col-sku">SKU</th>
               <th className="col-category">Category</th>
               <th className="col-price">Price</th>
+              <th className="col-image">Image</th>
+              <th className="col-quantity">Quantity</th>
               <th>Description</th>
               <th className="col-action">Action</th>
             </tr>
@@ -246,6 +346,10 @@ export default function Products() {
                 <td className="col-sku">{item.sku}</td>
                 <td className="col-category">{item.categoryName}</td>
                 <td className="col-price">{money(item.price)}</td>
+                <td className="col-image">
+                  {item.imageUrl ? <img className="product-thumb" src={item.imageUrl} alt="" /> : "—"}
+                </td>
+                <td className="col-quantity">{item.quantity ?? 0}</td>
                 <td>
                   <span className="cell-ellipsis" title={item.description}>
                     {item.description}
@@ -253,6 +357,14 @@ export default function Products() {
                 </td>
                 <td className="col-action">
                   <div className="row-actions">
+                    <button
+                      type="button"
+                      className="primary"
+                      onClick={() => addToCart(item)}
+                      disabled={(cart[item.id] || 0) >= (item.quantity || 0)}
+                    >
+                      Add to Cart
+                    </button>
                     <button type="button" className="secondary" onClick={() => openEdit(item)}>
                       Edit
                     </button>
@@ -270,7 +382,7 @@ export default function Products() {
             ))}
             {loaded && items.length === 0 && (
               <tr>
-                <td className="empty" colSpan={7}>
+                <td className="empty" colSpan={9}>
                   No products yet.
                 </td>
               </tr>

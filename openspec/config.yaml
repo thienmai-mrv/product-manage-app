@@ -1,32 +1,28 @@
 schema: spec-driven
 
-# Project context (optional)
-# Add only constraints that should guide OpenSpec artifacts and workflows.
-# Include constraints an agent cannot infer by reading the code.
-# Keep general project documentation and discoverable codebase facts out.
-# Example:
-#   context: |
-#     Designs and tasks must cover Windows, macOS, and Linux
-#     Write all artifacts in Spanish
+context: |
+  - Dual runtime architecture: every route and API change must work identically in the local Express server (`src/app.js`) and the Cloudflare Worker (`src/worker.js`).
+  - Runtime & build: Node 22 ESM (`"type": "module"`), React 19 + React Router 7 + Vite frontend in `web/`, MongoDB storage in `src/store.js`, and `node:test` unit tests via `npm test`.
+  - Secrets: `MONGODB_URI` is never written into `wrangler.toml` or committed to source control.
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always state what is out of scope
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
 
-# Per-operation guidance (optional)
-# Add advisory guidance for how apply and archive work should be conducted.
-# This is separate from artifact rules above.
-# Example:
-#   operations:
-#     apply:
-#       guidance:
-#         - Keep test summaries concise
-#     archive:
-#       guidance:
-#         - Summarize the archive outcome before finishing
+rules:
+  proposal:
+    - Clearly explain business objectives.
+    - Identify scope and affected modules.
+    - Define measurable acceptance criteria.
+
+  specs:
+    - Use testable requirements.
+    - Include scenarios and edge cases.
+    - Document business rules.
+
+  design:
+    - Analyze existing architecture first.
+    - Include data models and API contracts.
+    - Identify dependencies and security concerns.
+
+  tasks:
+    - Break implementation into small tasks.
+    - Include testing tasks.
+    - Identify task dependencies.

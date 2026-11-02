@@ -56,7 +56,7 @@ In Atlas **Network Access**, allow `0.0.0.0/0`. Workers do not have a fixed outb
 | GET | `/products` | React product page. |
 | GET | `/categories` | React category page. |
 | GET | `/api/products` | Lists products. |
-| POST | `/api/products` | `{ "name", "sku", "price", "categoryId", "description" }`. |
+| POST | `/api/products` | `{ "name", "sku", "price", "categoryId", "description", "imageUrl", "quantity" }`. |
 | PUT | `/api/products/<id>` | Same fields as create. |
 | DELETE | `/api/products/<id>` | Deletes that product. |
 | GET | `/api/categories` | Lists categories. |
