@@ -1,9 +1,10 @@
 schema: spec-driven
 
 context: |
-  - Dual runtime architecture: every route and API change must work identically in the local Express server (`src/app.js`) and the Cloudflare Worker (`src/worker.js`).
+  - Project Memory: read `.ai/memory/INDEX.md` and the linked approved memory files before exploring the repo. Memory is shared baseline knowledge; OpenSpec owns the current feature. Do not edit `.ai/memory/**` unless you are the Memory Initialization or Memory Update agent.
+  - Dual runtime architecture: every route and API change must work identically in the local Express server (`src/app.js`) and the Cloudflare Worker (`src/worker.js`). Details: `.ai/memory/runtime-parity.md`.
   - Runtime & build: Node 22 ESM (`"type": "module"`), React 19 + React Router 7 + Vite frontend in `web/`, MongoDB storage in `src/store.js`, and `node:test` unit tests via `npm test`.
-  - Secrets: `MONGODB_URI` is never written into `wrangler.toml` or committed to source control.
+  - Secrets: `MONGODB_URI` is never written into `wrangler.toml` or committed to source control. See `.ai/memory/security.md`.
 
 
 rules:

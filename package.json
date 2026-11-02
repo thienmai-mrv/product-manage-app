@@ -15,7 +15,11 @@
     "start": "npm run build:web && node server.js",
     "dev:worker": "scripts\\with-node.cmd wrangler dev",
     "preview": "scripts\\with-node.cmd npm run build:web && wrangler preview",
-    "deploy": "scripts\\with-node.cmd npm run build:web && wrangler deploy"
+    "deploy": "scripts\\with-node.cmd npm run build:web && wrangler deploy",
+    "workflow:verify": "node scripts/workflow-check.mjs verify",
+    "workflow:ready": "node scripts/workflow-check.mjs ready",
+    "memory:verify": "node scripts/workflow-check.mjs verify memory",
+    "memory:ready": "node scripts/workflow-check.mjs ready memory"
   },
   "dependencies": {
     "express": "^4.21.2",

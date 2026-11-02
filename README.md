@@ -47,6 +47,10 @@ In Atlas **Network Access**, allow `0.0.0.0/0`. Workers do not have a fixed outb
 
 `wrangler preview` does not inherit production secrets. Set the preview secret with `npx wrangler preview secret put MONGODB_URI`.
 
+## Development workflow
+
+Features are delivered by specialized agents orchestrated by Orca Desktop, specified in OpenSpec, and executed on Cursor CLI, with human approval gates. Shared project knowledge lives in [`.ai/memory/`](.ai/memory/README.md) so agents do not re-analyze the codebase from scratch each feature. See [AGENTS.md](AGENTS.md) and [docs/workflow/README.md](docs/workflow/README.md).
+
 ## Routes
 
 | Method | Path | Body |
