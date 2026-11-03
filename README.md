@@ -60,8 +60,9 @@ Features are delivered by specialized agents orchestrated by Orca Desktop, speci
 | GET | `/products` | React product page. |
 | GET | `/categories` | React category page. |
 | GET | `/api/products` | Lists products. |
-| POST | `/api/products` | `{ "name", "sku", "price", "categoryId", "description", "imageUrl", "quantity" }`. |
-| PUT | `/api/products/<id>` | Same fields as create. |
+| POST | `/api/products` | `{ "name", "sku", "price", "categoryId", "description", "imageUrl", "quantity" }` with optional `published` and optional `imageFile`. |
+| PUT | `/api/products/<id>` | Same fields as create, including optional `published` and optional `imageFile`. |
+| GET | `/api/products/<id>/image` | Returns the uploaded image bytes. |
 | DELETE | `/api/products/<id>` | Deletes that product. |
 | GET | `/api/categories` | Lists categories. |
 | POST | `/api/categories` | `{ "name", "description" }`. |

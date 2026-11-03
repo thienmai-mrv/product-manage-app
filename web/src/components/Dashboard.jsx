@@ -143,7 +143,6 @@ export default function Dashboard() {
       <ProductPanel
         status={status}
         error={error}
-        fetchedCount={items.length}
         view={view}
         savedIds={savedIds}
         onToggleSaved={toggleSaved}

@@ -1,40 +1,15 @@
-import { useState } from "react";
 import { formatPrice } from "../catalogView.js";
+import { displayImageSrc } from "../productImage.js";
+import ProductImage from "./ProductImage.jsx";
 
 /**
- * Show the stored product image, or the placeholder when it is missing or fails.
+ * Build the card image URL. Upload paths include a display-only version query.
  *
- * @param props.product Catalog product
- * @return Image or placeholder
+ * @param product Catalog product
+ * @return Image src
  */
-function ProductImage({ product }) {
-  const [failed, setFailed] = useState(false);
-  if (!product.imageUrl || failed) {
-    return <ProductPlaceholder />;
-  }
-  return (
-    <img
-      className="product-photo"
-      src={product.imageUrl}
-      alt=""
-      onError={() => setFailed(true)}
-    />
-  );
-}
-
-/**
- * Draw the static product mark used when a product has no image.
- *
- * @return Decorative SVG
- */
-function ProductPlaceholder() {
-  return (
-    <svg className="product-placeholder" viewBox="0 0 80 80" aria-hidden="true">
-      <rect x="16" y="24" width="48" height="36" fill="none" stroke="currentColor" strokeWidth="2" />
-      <path d="M16 36h48" fill="none" stroke="currentColor" strokeWidth="2" />
-      <path d="M30 24l10-10 10 10" fill="none" stroke="currentColor" strokeWidth="2" />
-    </svg>
-  );
+function cardImageSrc(product) {
+  return displayImageSrc(product.imageUrl, product.updatedAt || product.createdAt);
 }
 
 /**
@@ -81,7 +56,7 @@ function FeaturedTile({ product }) {
   return (
     <article className="product-card product-card-featured">
       <div className="image-well image-well-featured">
-        <ProductImage product={product} />
+        <ProductImage imageUrl={cardImageSrc(product)} />
       </div>
       <div className="featured-caption">
         {product.categoryName ? <p className="featured-category">{product.categoryName}</p> : null}
@@ -103,7 +78,7 @@ function ProductCard({ product, saved, onToggleSaved }) {
   return (
     <article className="product-card">
       <div className="image-well">
-        <ProductImage product={product} />
+        <ProductImage imageUrl={cardImageSrc(product)} />
         <button
           type="button"
           className={saved ? "heart is-saved" : "heart"}
@@ -130,7 +105,6 @@ function ProductCard({ product, saved, onToggleSaved }) {
  *
  * @param props.status `loading`, `ready`, or `error`
  * @param props.error Error text from the product request
- * @param props.fetchedCount Length of the loaded catalog before filters
  * @param props.view Result of `viewCatalog`
  * @param props.savedIds Product ids whose hearts are pressed
  * @param props.onToggleSaved Heart click handler
@@ -140,7 +114,6 @@ function ProductCard({ product, saved, onToggleSaved }) {
 export default function ProductPanel({
   status,
   error,
-  fetchedCount,
   view,
   savedIds,
   onToggleSaved,
@@ -168,8 +141,8 @@ export default function ProductPanel({
               ))}
             </div>
           </div>
-          {fetchedCount === 0 ? <p className="message">No products yet.</p> : null}
-          {fetchedCount > 0 && view.count === 0 ? (
+          {view.catalogCount === 0 ? <p className="message">No products yet.</p> : null}
+          {view.catalogCount > 0 && view.count === 0 ? (
             <p className="message">No products match the selected filters.</p>
           ) : null}
           {view.featured ? (

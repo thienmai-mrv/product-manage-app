@@ -10,7 +10,7 @@
   },
   "scripts": {
     "dev": "node server.js --dev",
-    "test": "node --test web/src/catalogView.test.js",
+    "test": "node --test web/src/catalogView.test.js src/productInput.test.js web/src/productImage.test.js",
     "build:web": "npm run build --prefix web",
     "start": "npm run build:web && node server.js",
     "dev:worker": "scripts\\with-node.cmd wrangler dev",

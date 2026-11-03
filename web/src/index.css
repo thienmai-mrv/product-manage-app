@@ -127,6 +127,7 @@ button {
 
 .row-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   gap: 8px;
 }
@@ -147,7 +148,12 @@ button {
   font-size: 14px;
 }
 
-.config-form input,
+.config-form input[type="checkbox"] {
+  width: auto;
+  justify-self: start;
+}
+
+.config-form input:not([type="checkbox"]),
 .config-form textarea,
 .config-form select {
   width: 100%;
@@ -224,8 +230,13 @@ td {
   text-align: center;
 }
 
+.product-table .col-status {
+  width: 120px;
+  text-align: center;
+}
+
 .product-table .col-action {
-  width: 280px;
+  width: 360px;
 }
 
 .product-thumb {

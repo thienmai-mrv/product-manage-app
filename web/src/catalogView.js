@@ -308,14 +308,26 @@ export function clearChip(state, chip) {
 }
 
 /**
+ * Keep products that are visible on the storefront.
+ * Only boolean false is unpublished. A missing flag stays included.
+ *
+ * @param products Fetched products
+ * @return Published products in fetched order
+ */
+export function publishedCatalog(products) {
+  return (Array.isArray(products) ? products : []).filter((product) => product.published !== false);
+}
+
+/**
  * Filter, sort, and split a fetched catalog for the dashboard.
+ * Publish membership is applied before price filters, sorting, the featured split, and price counts.
  *
  * @param products Fetched products
  * @param state Filter state
  * @return View model
  */
 export function viewCatalog(products, state) {
-  const list = Array.isArray(products) ? products : [];
+  const list = publishedCatalog(products);
   const items = sortProducts(filterProducts(list, state), state.sort);
   const featured = items[0] ?? null;
   const cards = items.slice(1);
@@ -324,6 +336,7 @@ export function viewCatalog(products, state) {
     featured,
     cards,
     count: items.length,
+    catalogCount: list.length,
     priceCounts: countPriceRanges(list),
     chips: activeChips(state),
   };

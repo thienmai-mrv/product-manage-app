@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { MongoClient } from "mongodb";
+import { Binary, MongoClient } from "mongodb";
+import { parsePublished, resolveProductImage } from "./productInput.js";
 
 const nameCollation = { locale: "en", strength: 2 };
 let indexesReady = false;
@@ -104,6 +105,7 @@ async function ensureSeed(db) {
         description: "Compact Bluetooth mouse",
         imageUrl: "",
         quantity: 10,
+        published: true,
         createdAt: now,
       },
       {
@@ -115,6 +117,7 @@ async function ensureSeed(db) {
         description: "Illustrated pocket guide",
         imageUrl: "",
         quantity: 8,
+        published: true,
         createdAt: now,
       },
       {
@@ -126,6 +129,7 @@ async function ensureSeed(db) {
         description: "Adjustable LED lamp",
         imageUrl: "",
         quantity: 5,
+        published: true,
         createdAt: now,
       },
     ]);
@@ -173,33 +177,6 @@ function requiredPrice(value) {
     throw httpError(400, "Price must be a number that is zero or greater");
   }
   return Math.round(price * 100) / 100;
-}
-
-/**
- * Read an optional product image URL.
- * An empty value means the product has no image. Only http and https are accepted.
- *
- * @param value Raw image URL
- * @return Trimmed URL, or an empty string
- */
-function optionalImageUrl(value) {
-  const text = optionalText(value);
-  if (!text) {
-    return "";
-  }
-  if (text.length > 2048) {
-    throw httpError(400, "Image URL is too long");
-  }
-  let url;
-  try {
-    url = new URL(text);
-  } catch {
-    throw httpError(400, "Image must be an http or https URL");
-  }
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw httpError(400, "Image must be an http or https URL");
-  }
-  return text;
 }
 
 /**
@@ -264,6 +241,7 @@ function toProduct(doc, categories) {
     categoryName: category?.name || "",
     description: doc.description ?? "",
     imageUrl: doc.imageUrl ?? "",
+    published: doc.published !== false,
     quantity: Number.isInteger(doc.quantity) ? doc.quantity : 0,
     createdAt: doc.createdAt,
     ...(doc.updatedAt ? { updatedAt: doc.updatedAt } : {}),
@@ -402,6 +380,69 @@ export function deleteCategory(env, id) {
 }
 
 /**
+ * Copy stored image bytes so the caller cannot mutate the driver buffer.
+ *
+ * @param data Binary or byte view from MongoDB
+ * @return Exact byte copy
+ */
+function copyImageBytes(data) {
+  const source = data && typeof data.value === "function" ? data.value() : data;
+  const copy = new Uint8Array(source.byteLength);
+  copy.set(source);
+  return copy;
+}
+
+/**
+ * Upsert one product image document.
+ * `createdAt` is set only on the first insert.
+ *
+ * @param images productImages collection
+ * @param id Product id
+ * @param image Upload decision from resolveProductImage
+ */
+async function upsertProductImage(images, id, image) {
+  const now = new Date().toISOString();
+  await images.updateOne(
+    { _id: id },
+    {
+      $set: {
+        contentType: image.contentType,
+        size: image.bytes.byteLength,
+        data: new Binary(image.bytes),
+        updatedAt: now,
+      },
+      $setOnInsert: { createdAt: now },
+    },
+    { upsert: true },
+  );
+}
+
+/**
+ * Delete one product image document. A missing document is not an error.
+ *
+ * @param images productImages collection
+ * @param id Product id
+ */
+async function deleteProductImage(images, id) {
+  await images.deleteOne({ _id: id });
+}
+
+/**
+ * Put the previous image document back after a failed product update.
+ *
+ * @param images productImages collection
+ * @param id Product id
+ * @param previous Image document, or null when there was none
+ */
+async function restoreProductImage(images, id, previous) {
+  if (previous) {
+    await images.replaceOne({ _id: id }, previous, { upsert: true });
+    return;
+  }
+  await deleteProductImage(images, id);
+}
+
+/**
  * Create a product.
  *
  * @param env Worker or local environment
@@ -416,18 +457,39 @@ export function addProduct(env, input) {
     if (!categories.some((category) => category._id === categoryId)) {
       throw httpError(400, "Category not found");
     }
+    const price = requiredPrice(input?.price);
+    const quantity = requiredQuantity(input?.quantity);
+    const id = randomUUID();
+    const published = parsePublished(input?.published, { omitted: "default-true" });
+    const image = resolveProductImage(input, { id });
     const product = {
-      _id: randomUUID(),
+      _id: id,
       name,
       sku: optionalText(input?.sku),
-      price: requiredPrice(input?.price),
+      price,
       categoryId,
       description: optionalText(input?.description),
-      imageUrl: optionalImageUrl(input?.imageUrl),
-      quantity: requiredQuantity(input?.quantity),
+      imageUrl: image.imageUrl,
+      quantity,
+      published,
       createdAt: new Date().toISOString(),
     };
-    await db.collection("products").insertOne(product);
+    const products = db.collection("products");
+    const images = db.collection("productImages");
+    if (image.kind === "upload") {
+      await upsertProductImage(images, id, image);
+      try {
+        await products.insertOne(product);
+      } catch (error) {
+        await restoreProductImage(images, id, null);
+        throw error;
+      }
+    } else {
+      await products.insertOne(product);
+      if (image.kind === "empty" || image.kind === "external") {
+        await deleteProductImage(images, id);
+      }
+    }
     return toProduct(product, categories);
   });
 }
@@ -452,33 +514,61 @@ export function updateProduct(env, id, input) {
     if (!categories.some((category) => category._id === categoryId)) {
       throw httpError(400, "Category not found");
     }
+    const name = requiredText(input?.name, "Name");
+    const sku = optionalText(input?.sku);
+    const price = requiredPrice(input?.price);
+    const description = optionalText(input?.description);
+    const quantity = requiredQuantity(input?.quantity);
+    const parsedPublished = parsePublished(input?.published, { omitted: "keep" });
+    const published = parsedPublished === undefined
+      ? current.published === false
+        ? false
+        : true
+      : parsedPublished;
+    const image = resolveProductImage(input, {
+      id,
+      currentImageUrl: current.imageUrl ?? "",
+    });
     const updatedAt = new Date().toISOString();
     const product = {
       ...current,
-      name: requiredText(input?.name, "Name"),
-      sku: optionalText(input?.sku),
-      price: requiredPrice(input?.price),
+      name,
+      sku,
+      price,
       categoryId,
-      description: optionalText(input?.description),
-      imageUrl: optionalImageUrl(input?.imageUrl),
-      quantity: requiredQuantity(input?.quantity),
+      description,
+      imageUrl: image.imageUrl,
+      quantity,
+      published,
       updatedAt,
     };
-    await products.updateOne(
-      { _id: id },
-      {
-        $set: {
-          name: product.name,
-          sku: product.sku,
-          price: product.price,
-          categoryId: product.categoryId,
-          description: product.description,
-          imageUrl: product.imageUrl,
-          quantity: product.quantity,
-          updatedAt,
-        },
-      },
-    );
+    const fields = {
+      name: product.name,
+      sku: product.sku,
+      price: product.price,
+      categoryId: product.categoryId,
+      description: product.description,
+      imageUrl: product.imageUrl,
+      quantity: product.quantity,
+      published,
+      updatedAt,
+    };
+    const images = db.collection("productImages");
+    if (image.kind === "upload") {
+      const previousImage = await images.findOne({ _id: id });
+      await upsertProductImage(images, id, image);
+      try {
+        await products.updateOne({ _id: id }, { $set: fields });
+      } catch (error) {
+        await restoreProductImage(images, id, previousImage);
+        throw error;
+      }
+    } else if (image.kind === "empty" || image.kind === "external") {
+      await products.updateOne({ _id: id }, { $set: fields });
+      await deleteProductImage(images, id);
+    } else {
+      await products.updateOne({ _id: id }, { $set: fields });
+    }
     return toProduct(product, categories);
   });
 }
@@ -496,6 +586,27 @@ export function deleteProduct(env, id) {
     if (result.deletedCount === 0) {
       throw httpError(404, "Product not found");
     }
+    await db.collection("productImages").deleteOne({ _id: id });
     return { deleted: true };
+  });
+}
+
+/**
+ * Read one uploaded product image.
+ *
+ * @param env Worker or local environment
+ * @param id Product id
+ * @return Content type and a copy of the stored bytes
+ */
+export function getProductImage(env, id) {
+  return withDatabase(env, async (db) => {
+    const doc = await db.collection("productImages").findOne({ _id: id });
+    if (!doc) {
+      throw httpError(404, "Product image not found");
+    }
+    return {
+      contentType: doc.contentType,
+      data: copyImageBytes(doc.data),
+    };
   });
 }

@@ -246,6 +246,60 @@ test("formatPrice uses two decimals", () => {
   assert.equal(formatPrice(18), "$18.00");
 });
 
+test("unpublished products drop out of the featured tile, cards, count, and price counts", () => {
+  const products = [
+    { id: "hidden", price: 10, published: false, createdAt: "2026-03-01T00:00:00.000Z" },
+    { id: "shown", price: 20, published: true, createdAt: "2026-02-01T00:00:00.000Z" },
+    { id: "legacy", price: 150, createdAt: "2026-01-01T00:00:00.000Z" },
+  ];
+  const view = viewCatalog(products, state());
+  assert.equal(view.catalogCount, 2);
+  assert.equal(view.count, 2);
+  assert.equal(view.featured.id, "shown");
+  assert.deepEqual(view.cards.map((product) => product.id), ["legacy"]);
+  assert.equal(view.priceCounts["below-100"], 1);
+  assert.equal(view.priceCounts["100-199"], 1);
+  assert.equal(view.items.some((product) => product.id === "hidden"), false);
+  assert.equal(view.items.some((product) => product.id === "legacy"), true);
+});
+
+test("price counts still ignore stock, color, and selected ranges after publish filtering", () => {
+  const products = [
+    { id: "draft-cheap", price: 10, published: false },
+    { id: "shown-cheap", price: 20 },
+    { id: "shown-mid", price: 30, published: true },
+    { id: "draft-mid", price: 150, published: false },
+  ];
+  const view = viewCatalog(products, state({
+    inStockOnly: true,
+    priceRangeIds: ["below-100"],
+    colorIds: ["gold"],
+  }));
+  assert.equal(view.priceCounts["below-100"], 2);
+  assert.equal(view.priceCounts["100-199"], 0);
+  assert.equal(view.count, 2);
+  assert.equal(view.catalogCount, 2);
+});
+
+test("filterProducts still returns an unpublished product", () => {
+  const products = [{ id: "hidden", price: 10, published: false }];
+  assert.deepEqual(
+    filterProducts(products, state()).map((product) => product.id),
+    ["hidden"],
+  );
+});
+
+test("in stock only does not bring an unpublished product back", () => {
+  const products = [
+    { id: "hidden", price: 10, published: false },
+    { id: "shown", price: 20, published: true },
+  ];
+  const view = viewCatalog(products, state({ inStockOnly: true }));
+  assert.deepEqual(view.items.map((product) => product.id), ["shown"]);
+  assert.equal(view.count, 1);
+  assert.equal(view.catalogCount, 1);
+});
+
 test("a negative or non-finite price stays visible until a price range is selected", () => {
   const products = [
     { id: "ok", price: 12 },
