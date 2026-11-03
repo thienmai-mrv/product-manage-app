@@ -1,4 +1,5 @@
-import { addCategory, addProduct, deleteCategory, deleteProduct, listCategories, listProducts, updateCategory, updateProduct } from "./store.js";
+import { MAX_JSON_BODY_BYTES } from "./productInput.js";
+import { addCategory, addProduct, deleteCategory, deleteProduct, getProductImage, listCategories, listProducts, updateCategory, updateProduct } from "./store.js";
 
 /**
  * Build a JSON response.
@@ -21,8 +22,23 @@ function json(body, status = 200) {
  * @return Parsed JSON body
  */
 async function readJson(request) {
+  const declared = request.headers.get("content-length");
+  if (declared) {
+    const length = Number(declared);
+    if (Number.isFinite(length) && length > MAX_JSON_BODY_BYTES) {
+      const error = new Error("Request body is too large");
+      error.status = 413;
+      throw error;
+    }
+  }
+  const bytes = await request.arrayBuffer();
+  if (bytes.byteLength > MAX_JSON_BODY_BYTES) {
+    const error = new Error("Request body is too large");
+    error.status = 413;
+    throw error;
+  }
   try {
-    return await request.json();
+    return JSON.parse(new TextDecoder().decode(bytes));
   } catch {
     const error = new Error("Body must be JSON");
     error.status = 400;
@@ -54,6 +70,23 @@ function errorResponse(error) {
  * @return JSON response
  */
 async function handleApi(request, env, url) {
+  const imageMatch = url.pathname.match(/^\/api\/products\/([^/]+)\/image$/);
+  if (imageMatch) {
+    if (request.method !== "GET") {
+      return json({ error: "Method not allowed" }, 405);
+    }
+    const image = await getProductImage(env, decodeURIComponent(imageMatch[1]));
+    return new Response(image.data, {
+      status: 200,
+      headers: {
+        "Content-Type": image.contentType,
+        "Content-Length": String(image.data.byteLength),
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "no-store",
+      },
+    });
+  }
+
   const productMatch = url.pathname.match(/^\/api\/products(?:\/([^/]+))?$/);
   if (productMatch) {
     const id = productMatch[1] ? decodeURIComponent(productMatch[1]) : "";

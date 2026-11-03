@@ -1,4 +1,4 @@
-import { COLORS, PRICE_RANGES, SORT_OPTIONS } from "../catalogView.js";
+import { PRICE_RANGES, SORT_OPTIONS } from "../catalogView.js";
 
 /**
  * Render one collapsible filter section.
@@ -35,29 +35,31 @@ function FilterSection({ id, title, collapsed, onToggle, children }) {
 }
 
 /**
- * Render the sort, availability, price, and color controls.
+ * Render the sort, availability, price, and category controls.
  * The panel is controlled by the dashboard. It does not decide which products match.
  *
  * @param props.state Filter state
  * @param props.priceCounts Whole-catalog bucket counts
+ * @param props.categories Categories available for filtering
  * @param props.onSort Sort change handler
  * @param props.onToggleInStock Availability handler
  * @param props.onTogglePrice Price checkbox handler
- * @param props.onToggleColor Color swatch handler
+ * @param props.onToggleCategory Category checkbox handler
  * @param props.onToggleSection Collapse handler
  * @return Filter panel
  */
 export default function FilterPanel({
   state,
   priceCounts,
+  categories,
   onSort,
   onToggleInStock,
   onTogglePrice,
-  onToggleColor,
+  onToggleCategory,
   onToggleSection,
 }) {
   const selectedPrices = new Set(state.priceRangeIds);
-  const selectedColors = new Set(state.colorIds);
+  const selectedCategories = new Set(state.categoryIds);
 
   return (
     <aside className="filter-panel">
@@ -115,25 +117,22 @@ export default function FilterPanel({
       </FilterSection>
 
       <FilterSection
-        id="color"
-        title="Color"
-        collapsed={state.collapsed.color}
+        id="category"
+        title="Categories"
+        collapsed={state.collapsed.category}
         onToggle={onToggleSection}
       >
-        <div className="swatch-grid">
-          {COLORS.map((color) => (
-            <button
-              key={color.id}
-              type="button"
-              className={`swatch swatch-${color.id}`}
-              aria-pressed={selectedColors.has(color.id)}
-              onClick={() => onToggleColor(color.id)}
-            >
-              <span className="swatch-tile" />
-              <span className="swatch-label">{color.label}</span>
-            </button>
-          ))}
-        </div>
+        {categories.length === 0 ? <p className="message">No categories yet.</p> : null}
+        {categories.map((category) => (
+          <label key={category.id} className="price-row">
+            <input
+              type="checkbox"
+              checked={selectedCategories.has(category.id)}
+              onChange={() => onToggleCategory(category.id)}
+            />
+            <span>{category.name}</span>
+          </label>
+        ))}
       </FilterSection>
     </aside>
   );

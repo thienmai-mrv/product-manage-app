@@ -18,6 +18,10 @@ body {
   padding: 32px 20px 48px;
 }
 
+.page-wide {
+  max-width: 1600px;
+}
+
 .nav {
   display: flex;
   gap: 8px;
@@ -127,6 +131,7 @@ button {
 
 .row-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   gap: 8px;
 }
@@ -147,7 +152,12 @@ button {
   font-size: 14px;
 }
 
-.config-form input,
+.config-form input[type="checkbox"] {
+  width: auto;
+  justify-self: start;
+}
+
+.config-form input:not([type="checkbox"]),
 .config-form textarea,
 .config-form select {
   width: 100%;
@@ -207,6 +217,14 @@ td {
   width: 168px;
 }
 
+.category-table .col-action {
+  width: 112px;
+}
+
+.category-table .row-actions {
+  flex-wrap: nowrap;
+}
+
 .product-table .col-sku,
 .product-table .col-category {
   width: 140px;
@@ -224,8 +242,50 @@ td {
   text-align: center;
 }
 
+.product-table {
+  width: 100%;
+  min-width: 1396px;
+}
+
+.product-table .col-name {
+  width: 180px;
+}
+
+.product-table .col-status,
+.product-table .col-stock {
+  width: 140px;
+  text-align: center;
+}
+
+.product-table .col-status {
+  width: 120px;
+}
+
+.product-table .col-description {
+  width: 160px;
+}
+
 .product-table .col-action {
-  width: 280px;
+  width: 188px;
+}
+
+.product-table .row-actions {
+  flex-wrap: nowrap;
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+}
+
+.action-icon {
+  display: block;
+  width: 16px;
+  height: 16px;
 }
 
 .product-thumb {
@@ -233,38 +293,6 @@ td {
   height: 40px;
   object-fit: cover;
   background: #f5f5f5;
-}
-
-.cart-summary {
-  margin: 0 0 16px;
-  padding: 16px;
-  border: 1px solid #d5dee6;
-  border-radius: 10px;
-  background: #fff;
-}
-
-.cart-summary h2 {
-  margin: 0;
-  font-size: 18px;
-}
-
-.cart-count,
-.cart-empty {
-  margin: 8px 0 0;
-}
-
-.cart-lines {
-  display: grid;
-  gap: 8px;
-  margin: 12px 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.cart-lines li {
-  display: flex;
-  align-items: center;
-  gap: 12px;
 }
 
 .cell-ellipsis {
@@ -606,6 +634,7 @@ body:has(.page-dashboard) {
 @media (max-width: 959px) {
   .dashboard {
     flex-direction: column;
+    align-items: stretch;
   }
 
   .filter-panel {

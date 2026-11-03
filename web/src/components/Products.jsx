@@ -1,5 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { requestJson } from "../api.js";
+import { displayImageSrc } from "../productImage.js";
+import ActionIcon from "./ActionIcon.jsx";
+import ProductImage from "./ProductImage.jsx";
+
+const MAX_IMAGE_BYTES = 1048576;
+const MAX_IMAGE_URL_LENGTH = 2048;
+const ALLOWED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 
 const emptyForm = {
   mode: "add",
@@ -10,7 +17,11 @@ const emptyForm = {
   categoryId: "",
   description: "",
   imageUrl: "",
+  imageFile: null,
+  keptImageUrl: "",
+  imageCleared: false,
   quantity: "1",
+  published: true,
 };
 
 /**
@@ -21,6 +32,57 @@ const emptyForm = {
  */
 function money(price) {
   return Number(price).toFixed(2);
+}
+
+/**
+ * Return true when the value is an http or https URL.
+ *
+ * @param value Raw URL
+ * @return True for an external image URL
+ */
+function isHttpUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Return true when the value is this app's upload image path.
+ *
+ * @param value Stored image URL
+ * @return True for an upload path
+ */
+function isUploadPath(value) {
+  return /^\/api\/products\/[^/]+\/image$/.test(value);
+}
+
+/**
+ * Encode a file as standard base64 with no data: prefix.
+ *
+ * @param file Selected file
+ * @return Base64 text
+ */
+async function fileToBase64(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+  return btoa(binary);
+}
+
+/**
+ * Build the DOM src for a stored product image.
+ *
+ * @param item Product row
+ * @return Display URL
+ */
+function productImageSrc(item) {
+  return displayImageSrc(item.imageUrl, item.updatedAt || item.createdAt);
 }
 
 /**
@@ -36,7 +98,8 @@ export default function Products() {
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState("");
-  const [cart, setCart] = useState({});
+  const [publishingId, setPublishingId] = useState("");
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,10 +129,20 @@ export default function Products() {
   }, []);
 
   /**
+   * Drop the selected file from the form and the file control.
+   */
+  function resetFileInput() {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }
+
+  /**
    * Open a blank add form.
    */
   function openAdd() {
     setError("");
+    resetFileInput();
     setForm({
       ...emptyForm,
       categoryId: categories[0]?.id || "",
@@ -78,11 +151,14 @@ export default function Products() {
 
   /**
    * Open the edit form for one product.
+   * An upload path stays in state and is not shown in the URL field.
    *
    * @param item Product row
    */
   function openEdit(item) {
     setError("");
+    resetFileInput();
+    const storedImage = item.imageUrl || "";
     setForm({
       mode: "edit",
       id: item.id,
@@ -91,8 +167,12 @@ export default function Products() {
       price: item.price ?? "",
       categoryId: item.categoryId || "",
       description: item.description || "",
-      imageUrl: item.imageUrl || "",
+      imageUrl: isHttpUrl(storedImage) ? storedImage : "",
+      imageFile: null,
+      keptImageUrl: isUploadPath(storedImage) ? storedImage : "",
+      imageCleared: false,
       quantity: item.quantity ?? 0,
+      published: item.published !== false,
     });
   }
 
@@ -104,6 +184,50 @@ export default function Products() {
    */
   function updateForm(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  /**
+   * Store a selected file and clear the URL text.
+   *
+   * @param event File input event
+   */
+  function onImageFile(event) {
+    const file = event.target.files?.[0] ?? null;
+    setForm((current) => ({
+      ...current,
+      imageFile: file,
+      imageUrl: file ? "" : current.imageUrl,
+    }));
+  }
+
+  /**
+   * Store a typed URL and clear any selected file.
+   *
+   * @param value URL text
+   */
+  function onImageUrl(value) {
+    if (value.trim()) {
+      resetFileInput();
+    }
+    setForm((current) => ({
+      ...current,
+      imageUrl: value,
+      imageFile: value.trim() ? null : current.imageFile,
+    }));
+  }
+
+  /**
+   * Drop both the file and the URL, including a kept upload path.
+   */
+  function clearImage() {
+    resetFileInput();
+    setForm((current) => (current ? {
+      ...current,
+      imageUrl: "",
+      imageFile: null,
+      keptImageUrl: "",
+      imageCleared: true,
+    } : current));
   }
 
   /**
@@ -126,10 +250,19 @@ export default function Products() {
       setError("Quantity must be a whole number that is zero or greater");
       return;
     }
-    const imageUrl = form.imageUrl.trim();
-    if (imageUrl) {
+    const urlText = form.imageUrl.trim();
+    const file = form.imageFile;
+    if (file && urlText) {
+      setError("Choose an image file or an image URL, not both");
+      return;
+    }
+    if (urlText.length > MAX_IMAGE_URL_LENGTH) {
+      setError("Image URL is too long");
+      return;
+    }
+    if (urlText) {
       try {
-        const url = new URL(imageUrl);
+        const url = new URL(urlText);
         if (url.protocol !== "http:" && url.protocol !== "https:") {
           throw new Error("bad protocol");
         }
@@ -138,22 +271,48 @@ export default function Products() {
         return;
       }
     }
+    if (file) {
+      if (file.size === 0) {
+        setError("Image file is empty");
+        return;
+      }
+      if (file.size > MAX_IMAGE_BYTES) {
+        setError("Image file must be 1 MB or smaller");
+        return;
+      }
+      if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+        setError("Image file must be PNG, JPEG, WebP, or GIF");
+        return;
+      }
+    }
     setSaving(true);
     setError("");
     try {
+      const payload = {
+        name: form.name,
+        sku: form.sku,
+        price: form.price,
+        categoryId: form.categoryId,
+        description: form.description,
+        quantity,
+        published: form.published === true,
+        imageUrl: "",
+      };
+      if (file) {
+        payload.imageFile = {
+          contentType: file.type,
+          dataBase64: await fileToBase64(file),
+        };
+      } else if (urlText) {
+        payload.imageUrl = urlText;
+      } else if (form.mode === "edit" && form.keptImageUrl && !form.imageCleared) {
+        payload.imageUrl = form.keptImageUrl;
+      }
       const body = await requestJson(form.mode === "add" ? "/api/products" : `/api/products/${form.id}`, {
         method: form.mode === "add" ? "POST" : "PUT",
         headers: { "Content-Type": "application/json" },
         fallback: "Could not save the product",
-        body: JSON.stringify({
-          name: form.name,
-          sku: form.sku,
-          price: form.price,
-          categoryId: form.categoryId,
-          description: form.description,
-          imageUrl,
-          quantity,
-        }),
+        body: JSON.stringify(payload),
       });
       setItems((current) => {
         if (form.mode === "add") {
@@ -166,6 +325,79 @@ export default function Products() {
       setError(saveError.message || "Could not save the product");
     } finally {
       setSaving(false);
+    }
+  }
+
+  /**
+   * Switch one product between in stock and out of stock.
+   * The body keeps the current image and does not send a file.
+   *
+   * @param item Product row
+   */
+  async function toggleStock(item) {
+    setPublishingId(item.id);
+    setError("");
+    try {
+      const body = await requestJson(`/api/products/${item.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        fallback: "Could not save the product",
+        body: JSON.stringify({
+          name: item.name,
+          sku: item.sku ?? "",
+          price: item.price,
+          categoryId: item.categoryId,
+          description: item.description ?? "",
+          quantity: item.quantity ?? 0,
+          published: item.published !== false,
+          inStock: item.inStock === false,
+          imageUrl: item.imageUrl || "",
+        }),
+      });
+      setItems((current) => current.map((row) => (row.id === item.id ? body.item : row)));
+    } catch (stockError) {
+      setError(stockError.message || "Could not save the product");
+    } finally {
+      setPublishingId("");
+    }
+  }
+
+  /**
+   * Publish or unpublish one product through the existing update route.
+   * The body keeps the current image and does not send a file.
+   *
+   * @param item Product row
+   */
+  async function togglePublished(item) {
+    setPublishingId(item.id);
+    setError("");
+    try {
+      const body = await requestJson(`/api/products/${item.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        fallback: "Could not save the product",
+        body: JSON.stringify({
+          name: item.name,
+          sku: item.sku ?? "",
+          price: item.price,
+          categoryId: item.categoryId,
+          description: item.description ?? "",
+          quantity: item.quantity ?? 0,
+          published: item.published === false,
+          imageUrl: item.imageUrl || "",
+        }),
+      });
+      setItems((current) => current.map((row) => (row.id === item.id ? body.item : row)));
+      setForm((current) => {
+        if (!current || current.id !== item.id) {
+          return current;
+        }
+        return { ...current, published: body.item.published !== false };
+      });
+    } catch (publishError) {
+      setError(publishError.message || "Could not save the product");
+    } finally {
+      setPublishingId("");
     }
   }
 
@@ -186,14 +418,6 @@ export default function Products() {
         fallback: "Could not delete the product",
       });
       setItems((current) => current.filter((row) => row.id !== item.id));
-      setCart((current) => {
-        if (!current[item.id]) {
-          return current;
-        }
-        const next = { ...current };
-        delete next[item.id];
-        return next;
-      });
       if (form?.id === item.id) {
         setForm(null);
       }
@@ -204,55 +428,9 @@ export default function Products() {
     }
   }
 
-  /**
-   * Add one unit of a product to the in-memory cart.
-   * The cart cannot exceed the product's stored quantity.
-   *
-   * @param item Product row
-   */
-  function addToCart(item) {
-    setError("");
-    setCart((current) => {
-      const inCart = current[item.id] || 0;
-      if (inCart >= item.quantity) {
-        return current;
-      }
-      return { ...current, [item.id]: inCart + 1 };
-    });
-  }
-
-  const cartCount = Object.values(cart).reduce((sum, count) => sum + count, 0);
-  const cartLines = items.filter((item) => cart[item.id]);
-
   return (
     <>
       {error && <p className="message error">{error}</p>}
-      <section className="cart-summary" aria-label="Cart">
-        <h2>Cart</h2>
-        <p className="cart-count">{cartCount} items</p>
-        {cartLines.length === 0 ? <p className="cart-empty">No products in the cart.</p> : null}
-        {cartLines.length > 0 ? (
-          <ul className="cart-lines">
-            {cartLines.map((item) => (
-              <li key={item.id}>
-                {item.imageUrl ? <img className="product-thumb" src={item.imageUrl} alt="" /> : null}
-                <span>{item.name}</span>
-                <span>{cart[item.id]}</span>
-                <button type="button" className="secondary" onClick={() => {
-                  setCart((current) => {
-                    const next = { ...current };
-                    delete next[item.id];
-                    return next;
-                  });
-                }}
-                >
-                  Remove
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </section>
       <div className="toolbar">
         <button type="button" className="primary" onClick={openAdd}>
           Add
@@ -294,13 +472,35 @@ export default function Products() {
             <textarea value={form.description} onChange={(event) => updateForm("description", event.target.value)} />
           </label>
           <label>
+            Image file
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              onChange={onImageFile}
+            />
+          </label>
+          <label>
             Product Image
             <input
               type="url"
               inputMode="url"
               placeholder="https://"
               value={form.imageUrl}
-              onChange={(event) => updateForm("imageUrl", event.target.value)}
+              onChange={(event) => onImageUrl(event.target.value)}
+            />
+          </label>
+          <div className="form-actions">
+            <button type="button" className="secondary" onClick={clearImage} disabled={saving}>
+              Clear image
+            </button>
+          </div>
+          <label>
+            Published
+            <input
+              type="checkbox"
+              checked={form.published === true}
+              onChange={(event) => updateForm("published", event.target.checked)}
             />
           </label>
           <label>
@@ -334,7 +534,9 @@ export default function Products() {
               <th className="col-price">Price</th>
               <th className="col-image">Image</th>
               <th className="col-quantity">Quantity</th>
-              <th>Description</th>
+              <th className="col-description">Description</th>
+              <th className="col-status">Status</th>
+              <th className="col-stock">Stock</th>
               <th className="col-action">Action</th>
             </tr>
           </thead>
@@ -347,7 +549,11 @@ export default function Products() {
                 <td className="col-category">{item.categoryName}</td>
                 <td className="col-price">{money(item.price)}</td>
                 <td className="col-image">
-                  {item.imageUrl ? <img className="product-thumb" src={item.imageUrl} alt="" /> : "—"}
+                  <ProductImage
+                    imageUrl={productImageSrc(item)}
+                    className="product-thumb"
+                    placeholderClassName="product-thumb"
+                  />
                 </td>
                 <td className="col-quantity">{item.quantity ?? 0}</td>
                 <td>
@@ -355,26 +561,48 @@ export default function Products() {
                     {item.description}
                   </span>
                 </td>
+                <td className="col-status">{item.published === false ? "Unpublished" : "Published"}</td>
+                <td className="col-stock">{item.inStock === false ? "Out of Stock" : "In Stock"}</td>
                 <td className="col-action">
                   <div className="row-actions">
                     <button
                       type="button"
-                      className="primary"
-                      onClick={() => addToCart(item)}
-                      disabled={(cart[item.id] || 0) >= (item.quantity || 0)}
+                      className="secondary icon-button"
+                      aria-label={item.inStock === false ? "Mark in stock" : "Mark out of stock"}
+                      title={item.inStock === false ? "Mark in stock" : "Mark out of stock"}
+                      onClick={() => toggleStock(item)}
+                      disabled={publishingId === item.id}
                     >
-                      Add to Cart
-                    </button>
-                    <button type="button" className="secondary" onClick={() => openEdit(item)}>
-                      Edit
+                      <ActionIcon name={item.inStock === false ? "in-stock" : "out-of-stock"} />
                     </button>
                     <button
                       type="button"
-                      className="danger"
+                      className="secondary icon-button"
+                      aria-label={item.published === false ? "Publish" : "Unpublish"}
+                      title={item.published === false ? "Publish" : "Unpublish"}
+                      onClick={() => togglePublished(item)}
+                      disabled={publishingId === item.id}
+                    >
+                      <ActionIcon name={item.published === false ? "publish" : "unpublish"} />
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary icon-button"
+                      aria-label="Edit"
+                      title="Edit"
+                      onClick={() => openEdit(item)}
+                    >
+                      <ActionIcon name="edit" />
+                    </button>
+                    <button
+                      type="button"
+                      className="danger icon-button"
+                      aria-label="Delete"
+                      title="Delete"
                       onClick={() => removeItem(item)}
                       disabled={deletingId === item.id}
                     >
-                      {deletingId === item.id ? "Deleting…" : "Delete"}
+                      <ActionIcon name="delete" />
                     </button>
                   </div>
                 </td>
@@ -382,7 +610,7 @@ export default function Products() {
             ))}
             {loaded && items.length === 0 && (
               <tr>
-                <td className="empty" colSpan={9}>
+                <td className="empty" colSpan={11}>
                   No products yet.
                 </td>
               </tr>
