@@ -7,3 +7,4 @@ Append one row per decision. When a gate is decided more than once, the last row
 | Gate | After stage | Decision | Approved by | Date | Notes |
 |---|---|---|---|---|---|
 | G1 | analyst | approved | Thien Mai | 2026-11-03 | Requirements approved. Five open questions in proposal.md stay unresolved for the architect to decide in the technical plan. |
+| G2 | architect | approved | Thien Mai | 2026-11-03 | Technical plan approved, including MongoDB image storage, PNG/JPEG/WebP/GIF at 1 MB, published-by-default, and the empty published dashboard copy. |
