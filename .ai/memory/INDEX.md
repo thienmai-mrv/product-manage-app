@@ -1,13 +1,13 @@
 # Memory Index
 
-Last refreshed: 2026-11-02
+Last refreshed: 2026-11-03
 
 ## Core (required)
 
 | File | Purpose | Status |
 |---|---|---|
-| [STATUS.md](STATUS.md) | Approval lifecycle | pending-approval, version 1 |
-| [approvals.md](approvals.md) | GM0 / GM5 log | present, human-only, no GM0 row yet |
+| [STATUS.md](STATUS.md) | Approval lifecycle | approved, version 1 |
+| [approvals.md](approvals.md) | GM0 / GM5 log | GM0 approved 2026-11-03 |
 | [project-overview.md](project-overview.md) | What the product is | current |
 | [architecture.md](architecture.md) | System structure and data flow | current |
 | [domain-model.md](domain-model.md) | Entities and business rules | current |

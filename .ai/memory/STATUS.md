@@ -1,12 +1,12 @@
 # Memory Status
 
-**Lifecycle:** pending-approval
+**Lifecycle:** approved
 **Version:** 1
 **Last agent:** memory-init
 **Last change:** none
-**Pending files:** none — core files, modules, APIs, and decisions are filled; GM0 has not been recorded
-**Approved by:** none
-**Approved at:** none
+**Pending files:** none
+**Approved by:** Thien Mai
+**Approved at:** 2026-11-03
 
 ## Lifecycle values
 
@@ -20,4 +20,4 @@
 
 Feature stages (`analyst` and later) must see `Lifecycle: approved`. After a Memory Update Agent run, lifecycle becomes `pending-approval` until GM5.
 
-This baseline is waiting for a human GM0 decision in `approvals.md`. The init agent does not set `approved`.
+GM0 was approved on 2026-11-03. Feature stages may start. A later memory update still waits for GM5.
