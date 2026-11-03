@@ -46,30 +46,9 @@ function HeartIcon({ filled }) {
 }
 
 /**
- * Render the first matching product as the tall caption tile.
- * The tile has no price, heart, or BUY NOW control.
+ * Render one catalog card.
  *
- * @param props.product Featured product
- * @return Featured tile
- */
-function FeaturedTile({ product }) {
-  return (
-    <article className="product-card product-card-featured">
-      <div className="image-well image-well-featured">
-        <ProductImage imageUrl={cardImageSrc(product)} />
-      </div>
-      <div className="featured-caption">
-        {product.categoryName ? <p className="featured-category">{product.categoryName}</p> : null}
-        <p className="featured-name">{product.name}</p>
-      </div>
-    </article>
-  );
-}
-
-/**
- * Render one standard catalog card.
- *
- * @param props.product Product after the featured tile
+ * @param props.product Catalog product
  * @param props.saved True when the heart is pressed
  * @param props.onToggleSaved Heart click handler
  * @return Product card
@@ -145,10 +124,9 @@ export default function ProductPanel({
           {view.catalogCount > 0 && view.count === 0 ? (
             <p className="message">No products match the selected filters.</p>
           ) : null}
-          {view.featured ? (
+          {view.items.length > 0 ? (
             <div className="product-grid">
-              <FeaturedTile product={view.featured} />
-              {view.cards.map((product) => (
+              {view.items.map((product) => (
                 <ProductCard
                   key={product.id}
                   product={product}

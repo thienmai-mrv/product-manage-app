@@ -12,6 +12,7 @@ import ProductPanel from "./ProductPanel.jsx";
  */
 export default function Dashboard() {
   const [items, setItems] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [status, setStatus] = useState("loading");
   const [error, setError] = useState("");
   const [filters, setFilters] = useState(createFilterState);
@@ -22,11 +23,15 @@ export default function Dashboard() {
 
     (async () => {
       try {
-        const body = await requestJson("/api/products", { fallback: "Could not load products" });
+        const [productBody, categoryBody] = await Promise.all([
+          requestJson("/api/products", { fallback: "Could not load products" }),
+          requestJson("/api/categories", { fallback: "Could not load categories" }),
+        ]);
         if (cancelled) {
           return;
         }
-        setItems(Array.isArray(body.items) ? body.items : []);
+        setItems(Array.isArray(productBody.items) ? productBody.items : []);
+        setCategories(Array.isArray(categoryBody.items) ? categoryBody.items : []);
         setStatus("ready");
       } catch (loadError) {
         if (!cancelled) {
@@ -41,7 +46,7 @@ export default function Dashboard() {
     };
   }, []);
 
-  const view = useMemo(() => viewCatalog(items, filters), [items, filters]);
+  const view = useMemo(() => viewCatalog(items, filters, categories), [items, filters, categories]);
 
   /**
    * Select one sort radio.
@@ -74,23 +79,23 @@ export default function Dashboard() {
   }
 
   /**
-   * Add or remove one color.
+   * Add or remove one category.
    *
-   * @param id Color id
+   * @param id Category id
    */
-  function toggleColor(id) {
+  function toggleCategory(id) {
     setFilters((current) => ({
       ...current,
-      colorIds: current.colorIds.includes(id)
-        ? current.colorIds.filter((item) => item !== id)
-        : [...current.colorIds, id],
+      categoryIds: current.categoryIds.includes(id)
+        ? current.categoryIds.filter((item) => item !== id)
+        : [...current.categoryIds, id],
     }));
   }
 
   /**
    * Expand or collapse one filter section.
    *
-   * @param section `availability`, `price`, or `color`
+   * @param section `availability`, `price`, or `category`
    */
   function toggleSection(section) {
     setFilters((current) => ({
@@ -134,10 +139,11 @@ export default function Dashboard() {
       <FilterPanel
         state={filters}
         priceCounts={view.priceCounts}
+        categories={categories}
         onSort={changeSort}
         onToggleInStock={toggleInStock}
         onTogglePrice={togglePrice}
-        onToggleColor={toggleColor}
+        onToggleCategory={toggleCategory}
         onToggleSection={toggleSection}
       />
       <ProductPanel

@@ -29,6 +29,7 @@ const PAGE_TITLES = {
 export default function App() {
   const location = useLocation();
   const isDashboard = location.pathname === "/dashboard";
+  const isWidePage = location.pathname === "/products" || location.pathname === "/categories";
   const pageTitle = PAGE_TITLES[location.pathname] || "Dashboard";
 
   useEffect(() => {
@@ -36,7 +37,7 @@ export default function App() {
   }, [pageTitle]);
 
   return (
-    <main className={isDashboard ? "page page-dashboard" : "page"}>
+    <main className={isDashboard ? "page page-dashboard" : isWidePage ? "page page-wide" : "page"}>
       {isDashboard ? null : (
         <header className="header">
           <h1>{pageTitle}</h1>

@@ -22,14 +22,18 @@ Constraints that shape the approach:
 - Accept a product image as an uploaded file or as an `http`/`https` URL, and persist that choice identically on Express and the Worker.
 - Serve uploaded bytes from MongoDB at a stable same-origin path stored in `imageUrl`, leaving the 2048-character cap on external URLs only.
 - Add a boolean `published` field, default existing rows, starter products, and omitted creates to published, and let `/products` publish or unpublish through the existing `PUT`.
-- Limit dashboard membership, featured tile, cards, `<N> items`, and price-bucket counts to published products, and show `No products yet.` plus `0 items` when that set is empty.
+- Limit dashboard membership, cards, `<N> items`, and price-bucket counts to published products, and show `No products yet.` plus `0 items` when that set is empty.
+- Add a boolean `inStock` field with the same default rules as `published`, show it on `/products`, and make `In Stock Only` on `/dashboard` exclude `inStock: false`.
+- Replace the dashboard Color swatches with a Categories filter, drop the Weight sorts, and render every matched product as the same standard card.
+- Remove the admin cart, use shared icon buttons for row actions, and widen `/products` and `/categories` to 1600px.
 - Cover the new pure rules with `node:test`.
 
 **Non-Goals:**
 
 - Accounts, roles, or hiding `PUT` from anonymous callers.
-- A new publish-only route, a `published` query parameter, or server-side dashboard filtering.
-- Changing category `productCount`, the category delete guard, cart persistence, or the always-true stock and color predicates.
+- A new publish-only or stock-only route, a `published` or `inStock` query parameter, or server-side dashboard filtering.
+- Changing category `productCount` or the category delete guard.
+- Deriving `inStock` from `quantity`.
 - Closing the existing Express versus Worker gaps for unsupported methods (KI-002) or invalid JSON message text.
 - Pagination, image transformation, SVG sanitizing, or a CDN.
 - Editing `proposal.md`, the delta specs, `.ai/memory/**`, or `approvals.md`.
@@ -105,13 +109,13 @@ When `imageFile` is present and trimmed `imageUrl` is also non-empty, the respon
 | Case | Result |
 |---|---|
 | Existing document with no `published` field, or any stored value other than boolean `false` | `toProduct` returns `published: true`. No migration script. The next successful update writes a real boolean. |
-| Starter products inserted by `ensureSeed` | `published: true` on `prod-mouse`, `prod-guide`, and `prod-lamp`. Their `imageUrl` stays `""`. |
+| Starter products inserted by `ensureSeed` | `published: true` and `inStock: true` on `prod-mouse`, `prod-guide`, and `prod-lamp`. Their `imageUrl` stays `""`. |
 | `POST` with `published` omitted | Store `true`. A new product stays visible, which matches the catalog before this change. |
 | `PUT` with `published` omitted | Keep the current value. A missing current value counts as `true`. |
 | `published: true` or `published: false` | Store that boolean. |
 | `null`, numbers, or strings such as `"false"` | HTTP 400 `"Published must be true or false"`. |
 
-`/products` shows every product. A checkbox labeled `Published` defaults to checked on add. A row button `Publish` or `Unpublish` sends `PUT` with the current fields, the flipped boolean, the current `imageUrl`, and no `imageFile`. There is no second route. A missing id still returns HTTP 404 `"Product not found"` before any write.
+`/products` shows every product. A checkbox labeled `Published` defaults to checked on add. A row icon button named `Publish` or `Unpublish` sends `PUT` with the current fields, the flipped boolean, the current `imageUrl`, and no `imageFile`. There is no second route. A missing id still returns HTTP 404 `"Product not found"` before any write.
 
 **Alternatives considered:**
 
@@ -126,13 +130,13 @@ When `imageFile` is present and trimmed `imageUrl` is also non-empty, the respon
 
 When `GET /api/products` succeeds and zero products are published, `/dashboard` shows `No products yet.` and `0 items`. That includes a database that has only unpublished products. The approved dashboard scenario already requires this copy. This plan does not add a second sentence such as "No published products."
 
-`viewCatalog` applies `publishedCatalog` before price filtering, sorting, the featured split, and `countPriceRanges`. It returns `catalogCount` as the published length and `count` as the length after filters. `ProductPanel` uses `catalogCount === 0` for `No products yet.` and `catalogCount > 0 && count === 0` for `No products match the selected filters.` The header stays `{count} items`. `filterProducts` does not read `published`, so stock and color stay non-excluding for products that are already in the published set. `Dashboard` still fetches the full list once and passes it through. It does not use `items.length` to choose the empty message, because unpublished rows would otherwise turn this state into the zero-match sentence.
+`viewCatalog` applies `publishedCatalog` before stock, category, and price filtering, sorting, and `countPriceRanges`. It returns `catalogCount` as the published length and `count` as the length after filters. It still returns `featured` and `cards`, but `ProductPanel` renders every entry of `items` as the same standard card. `ProductPanel` uses `catalogCount === 0` for `No products yet.` and `catalogCount > 0 && count === 0` for `No products match the selected filters.` The header stays `{count} items`. `filterProducts` does not read `published`. `Dashboard` still fetches the full product list once and passes it through. It does not use `items.length` to choose the empty message, because unpublished rows would otherwise turn this state into the zero-match sentence.
 
 The admin table keeps its own `No products yet.` row only when the API returns zero documents. Unpublished products remain in that table.
 
 ### 6. Shared pure module, then the store, then both adapters
 
-`src/productInput.js` owns the pure rules: `uploadImagePath`, `parsePublished`, `resolveProductImage`, and the byte, URL, and size constants. It imports neither `mongodb` nor `src/store.js`. It throws `Error` with `.status` set. `src/store.js` calls it and is the only writer. Express and the Worker keep mapping status and bodies. They do not reimplement magic bytes or publish defaults.
+`src/productInput.js` owns the pure rules: `uploadImagePath`, `parsePublished`, `parseInStock`, `resolveProductImage`, and the byte, URL, and size constants. It imports neither `mongodb` nor `src/store.js`. It throws `Error` with `.status` set. `src/store.js` calls it and is the only writer. Express and the Worker keep mapping status and bodies. They do not reimplement magic bytes or publish and stock defaults.
 
 `resolveProductImage(input, context)` returns one of:
 
@@ -156,6 +160,7 @@ JSON shape for create and update:
   "description": "Adjustable LED lamp",
   "quantity": 5,
   "published": true,
+  "inStock": true,
   "imageUrl": "",
   "imageFile": {
     "contentType": "image/png",
@@ -164,9 +169,40 @@ JSON shape for create and update:
 }
 ```
 
-`imageFile` is omitted or `null` when the admin is not uploading. The browser builds `dataBase64` with a loop and `btoa`. No new package.
+`imageFile` is omitted or `null` when the admin is not uploading. The browser builds `dataBase64` with a loop and `btoa`. No new package. `inStock` is optional on both create and update and follows decision 7.
 
 Display URLs are separate from stored URLs. `web/src/productImage.js` `displayImageSrc(url, version)` appends `?v=` plus `encodeURIComponent(version)` only when `url` matches `^/api/products/[^/]+/image$`. External URLs are returned unchanged, because a query could break a signed URL. The form and the `PUT` body use the stored path with no query. `version` is `updatedAt` or, when that is absent, `createdAt`, so replacing a file changes the DOM URL after save. `GET` ignores the query string.
+
+### 7. Stock status, dashboard filters, and admin actions
+
+`inStock` follows the same rules as `published`, through `parseInStock` in `src/productInput.js`. `src/store.js` applies it, so Express and the Worker share it.
+
+| Case | Result |
+|---|---|
+| Stored document with no `inStock`, or any value other than boolean `false` | `toProduct` returns `inStock: true` |
+| `POST` with `inStock` omitted | Store `true` |
+| `PUT` with `inStock` omitted | Keep the current value. `false` only when the stored value is boolean `false`. |
+| `inStock: true` or `false` | Store that boolean |
+| Any other present value, including `null` and `"false"` | HTTP 400 `"Stock status must be true or false"` |
+
+`inStock` is a manual flag. It does not read `quantity`.
+
+Dashboard rules in `web/src/catalogView.js`:
+
+- `SORT_OPTIONS` is `Best Sellers`, `Newest`, `Price:High-Low`, and `Price:Low-High`. `Best Sellers` keeps fetched order.
+- `In Stock Only` excludes `inStock === false` through `productIsInStock`.
+- The Color swatches are removed. `Dashboard` loads `GET /api/categories` alongside `GET /api/products`, and `FilterPanel` renders a collapsible `Categories` section with one checkbox per category. Selected categories combine with OR on `categoryId`. No selection does not exclude products.
+- Chips follow availability, then price ranges, then categories. Category chips use the category name.
+- `countPriceRanges` runs on the published list, so price counts ignore availability, category, and the selected price ranges.
+- Every matched product renders through the same `ProductCard`: square image well, category, name, price, heart, and `BUY NOW`. There is no featured caption tile.
+
+Admin pages:
+
+- `/products` has no cart and no `Add to Cart`.
+- Row actions on `/products` are icon buttons from `web/src/components/ActionIcon.jsx`, each with an `aria-label` and `title`: `Mark in stock` or `Mark out of stock`, `Publish` or `Unpublish`, `Edit`, and `Delete`. The stock button sends `PUT` with the flipped `inStock`, the current fields, the current `imageUrl`, and no `imageFile`.
+- The product table adds a `Stock` column that reads `Out of Stock` when `inStock === false` and `In Stock` otherwise. The empty row spans 11 columns.
+- `/categories` uses the same pencil and trash icons, named `Edit` and `Delete`, in a 112px action column. Delete still asks `window.confirm`.
+- `App.jsx` gives `/products` and `/categories` the `page page-wide` class, which sets `max-width: 1600px`. `/dashboard` keeps `page page-dashboard` and full width.
 
 ## Data model
 
@@ -175,9 +211,10 @@ Collection `products`, in addition to the current fields:
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `published` | boolean | on write | See decision 4. Read of a missing field is `true`. |
+| `inStock` | boolean | on write | See decision 7. Read of a missing field is `true`. |
 | `imageUrl` | string | yes | `""`, external URL, or `uploadImagePath(id)`. |
 
-No new product index. `published` is not queried in Mongo. Category `productCount` and the delete guard still count every product that references the category, published or not.
+No new product index. `published` and `inStock` are not queried in Mongo. Category `productCount` and the delete guard still count every product that references the category, published or not.
 
 Collection `productImages`:
 
@@ -190,7 +227,7 @@ Collection `productImages`:
 | `createdAt` | string | ISO time on first insert. |
 | `updatedAt` | string | ISO time on replace. |
 
-`GET /api/products` does not join this collection. `toProduct` adds `published` and still returns `imageUrl: doc.imageUrl ?? ""`. Quantity missing on old documents stays `0`.
+`GET /api/products` does not join this collection. `toProduct` adds `published` and `inStock` and still returns `imageUrl: doc.imageUrl ?? ""`. Quantity missing on old documents stays `0`.
 
 Write order, without a multi-document transaction (the store opens one short-lived client per call, ADR-002):
 
@@ -200,11 +237,11 @@ Write order, without a multi-document transaction (the store opens one short-liv
 4. For `keep`, do not write `productImages`.
 5. `deleteProduct` deletes the image document only after the product delete succeeds. A missing product stays HTTP 404 and does not remove an image document.
 
-Seed rows gain `published: true` only. No image documents are seeded. `ensureSeed` still runs only when both `categories` and `products` are empty.
+Seed rows gain `published: true` and `inStock: true`. No image documents are seeded. `ensureSeed` still runs only when both `categories` and `products` are empty.
 
 ## API contracts
 
-Item fields gain `published`. Existing fields stay. Create remains HTTP 201 `{ "item": ... }`. Update remains HTTP 200 `{ "item": ... }` with `updatedAt`. Delete remains HTTP 200 `{ "deleted": true }`. List remains HTTP 200 `{ "items": ... }` in `createdAt` descending order and includes unpublished products.
+Item fields gain `published` and `inStock`. Existing fields stay. Create remains HTTP 201 `{ "item": ... }`. Update remains HTTP 200 `{ "item": ... }` with `updatedAt`. Delete remains HTTP 200 `{ "deleted": true }`. List remains HTTP 200 `{ "items": ... }` in `createdAt` descending order and includes unpublished products.
 
 `GET /api/products/:id/image`
 
@@ -225,6 +262,7 @@ Error text added by this change, all `{ "error": "<message>" }` unless noted:
 | Wrong or mismatched type, including SVG | 400 | `Image file must be PNG, JPEG, WebP, or GIF` |
 | Decoded file or base64 length over the cap | 400 | `Image file must be 1 MB or smaller` |
 | `published` present and not a boolean | 400 | `Published must be true or false` |
+| `inStock` present and not a boolean | 400 | `Stock status must be true or false` |
 | JSON body over 2,097,152 bytes | 413 | `Request body is too large` |
 
 Unchanged messages stay the authority for name, category, price, quantity, URL protocol, URL length, missing product, missing `MONGODB_URI`, and Worker non-JSON bodies (`"Body must be JSON"`).
@@ -237,7 +275,7 @@ Publish and unpublish of a missing id use `PUT` and the existing 404. The image 
 
 | Behavior | Express | Worker |
 |---|---|---|
-| Field rules, publish default, image bytes, seed | `src/store.js` and `src/productInput.js` | Same modules |
+| Field rules, publish and stock defaults, image bytes, seed | `src/store.js` and `src/productInput.js` | Same modules |
 | `POST` / `PUT` / `DELETE` `/api/products` | `src/routes/products.js` | `handleApi` product regex |
 | `GET /api/products/:id/image` | `GET /:id/image` on the product router | Regex `^/api/products/([^/]+)/image$` matched before the one-segment product regex. Id is `decodeURIComponent`'d. |
 | Body cap | `express.json({ limit: "2mb" })` and `apiError` | `readJson` byte check |
@@ -261,7 +299,7 @@ Page routes stay `/dashboard`, `/products`, and `/categories`. No new page path.
 
 ## Performance
 
-The list response grows by one boolean per product. Image bytes move to one GET per visible upload, capped at 1 MB, with `Cache-Control: no-store` so a replaced file is not stuck behind the stable path. `?v=updatedAt` on the DOM `src` refreshes the admin and dashboard images after save without changing the stored reference. Base64 costs about one third extra on the write body only. Decoding is bounded by the 2 MB JSON cap. No pagination is added. `viewCatalog` still runs in the browser over the full list, which is the current catalog size.
+The list response grows by two booleans per product. Image bytes move to one GET per visible upload, capped at 1 MB, with `Cache-Control: no-store` so a replaced file is not stuck behind the stable path. `?v=updatedAt` on the DOM `src` refreshes the admin and dashboard images after save without changing the stored reference. Base64 costs about one third extra on the write body only. Decoding is bounded by the 2 MB JSON cap. No pagination is added. `viewCatalog` still runs in the browser over the full list, which is the current catalog size.
 
 ## Risks / Trade-offs
 
@@ -308,16 +346,17 @@ Node `>= 22`. Tests stay on `node:test`. The root `"test"` script gains `src/pro
 | Publish and unpublish a product | Publish from `/products` | 2.1, 2.2, 2.3, 4.4, 4.5, 5.1 |
 | Publish and unpublish a product | Unpublish and keep the admin row | 2.3, 4.4, 4.5, 5.1 |
 | Publish and unpublish a product | Missing id returns 404 `"Product not found"` | 2.3, 3.5 |
-| List products with resolved category names | Each item includes `published` and `imageUrl` | 2.1, 3.5 |
+| Product stock status | Toggle from `/products`, omitted defaults, non-boolean rejected | 1.1, 1.2, 2.1, 2.2, 2.3, 4.4, 4.5 |
+| List products with resolved category names | Each item includes `published`, `inStock`, and `imageUrl` | 2.1, 3.5 |
 | List products with resolved category names | Seed the three starter products | 2.6 |
-| Create product with validated fields | Valid create, including optional image and `published` | 2.2, 3.5 |
+| Create product with validated fields | Valid create, including optional image, `published`, and `inStock` | 2.2, 3.5 |
 | Create product with validated fields | Blank name or unknown category | 2.2, 6.2 |
 | Create product with validated fields | Bad price | 2.2, 6.2 |
 | Create product with validated fields | Bad image or quantity | 1.1, 2.2, 4.3 |
-| Update existing product | Valid update of image or `published` sets `updatedAt` | 2.3, 4.4 |
+| Update existing product | Valid update of image, `published`, or `inStock` sets `updatedAt` | 2.3, 4.4 |
 | Update existing product | Missing id | 2.3 |
-| Products administrative UI | Table, form, publish control, image, quantity, cart | 4.1, 4.3, 4.4, 4.5 |
-| Display only published products on dashboard | Hide unpublished rows, counts, and featured tile | 5.1, 5.2, 5.4 |
+| Products administrative UI | Table with Status and Stock, form, icon actions, image, quantity, no cart, confirmed delete | 4.1, 4.3, 4.4, 4.5 |
+| Display only published products on dashboard | Hide unpublished cards and counts | 5.1, 5.2, 5.4 |
 | Display only published products on dashboard | Unpublish disappears on next dashboard load | 5.4, 6.2 |
 | Display only published products on dashboard | Publish appears on next dashboard load | 5.4, 6.2 |
 | Display only published products on dashboard | Card renders the upload or URL, or the placeholder | 4.1, 4.2, 5.3 |
@@ -326,8 +365,14 @@ Node `>= 22`. Tests stay on `node:test`. The root `"test"` script gains `src/pro
 | Loading, error, empty catalog, and zero-match filter states | API error still uses `.message.error` | 5.3 |
 | Loading, error, empty catalog, and zero-match filter states | Zero published products: `No products yet.` and `0 items` | 5.1, 5.3 |
 | Loading, error, empty catalog, and zero-match filter states | Filters match nothing published | 5.1, 5.3 |
+| Dashboard route and landing page redirect | Products and categories load once on mount | 5.4 |
+| Sort radio controls and catalog ordering | Four sort options, `Best Sellers` keeps fetched order | 5.1, 5.2 |
+| Collapsible Availability filter control | `In Stock Only` excludes `inStock: false` | 5.1, 5.2 |
+| Collapsible Categories checkbox filter | OR on selected categories, none selected excludes nothing | 5.1, 5.2, 5.4 |
+| Result count header and removable active filter chips | Availability, price, then category chips | 5.1, 5.2 |
+| Standard product cards for every matched product | Every matched product, including the first, is a standard card | 5.3 |
 
-Delete of a product also deletes its image document (task 2.4) so a removed upload is not still served. The delete status contract itself is unchanged. Stock and color predicates stay covered by the existing catalog tests (task 5.2).
+Delete of a product also deletes its image document (task 2.4) so a removed upload is not still served. The delete status contract itself is unchanged. Stock, category, sort, and chip rules are covered by the catalog tests (task 5.2).
 
 ## Open Questions
 

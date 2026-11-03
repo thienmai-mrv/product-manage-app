@@ -8,8 +8,6 @@ export const SORT_OPTIONS = [
   { id: "newest", label: "Newest" },
   { id: "price-desc", label: "Price:High-Low" },
   { id: "price-asc", label: "Price:Low-High" },
-  { id: "weight-desc", label: "Weight:Heavy-Light" },
-  { id: "weight-asc", label: "Weight:Light-Heavy" },
 ];
 
 export const PRICE_RANGES = [
@@ -18,17 +16,6 @@ export const PRICE_RANGES = [
   { id: "200-299", label: "$200 to $299", min: 200, max: 300 },
   { id: "300-399", label: "$300 to $399", min: 300, max: 400 },
   { id: "400-up", label: "$400 and up", min: 400, max: null },
-];
-
-export const COLORS = [
-  { id: "black", label: "Black" },
-  { id: "white", label: "White" },
-  { id: "gold", label: "Gold" },
-  { id: "silver", label: "Silver" },
-  { id: "red", label: "Red" },
-  { id: "blue-navy", label: "Blue/Navy" },
-  { id: "green", label: "Green" },
-  { id: "yellow", label: "Yellow" },
 ];
 
 const STORED_SORTS = new Set(["newest", "price-desc", "price-asc"]);
@@ -44,33 +31,24 @@ export function createFilterState() {
     sort: "newest",
     inStockOnly: false,
     priceRangeIds: [],
-    colorIds: [],
+    categoryIds: [],
     collapsed: {
       availability: false,
       price: false,
-      color: false,
+      category: false,
     },
   };
 }
 
 /**
- * Treat every loaded product as in stock.
- * This pass does not read a stock field.
+ * A product is in stock unless its stock flag is boolean false.
+ * A missing flag stays in stock.
  *
- * @return True
+ * @param product Catalog product
+ * @return True when the product is in stock
  */
-export function productIsInStock() {
-  return true;
-}
-
-/**
- * Treat every product as matching the selected colors.
- * This pass does not infer color from the product name.
- *
- * @return True
- */
-export function matchesColor() {
-  return true;
+export function productIsInStock(product) {
+  return product?.inStock !== false;
 }
 
 /**
@@ -129,27 +107,28 @@ export function countPriceRanges(products) {
 
 /**
  * Keep products that match the selected price ranges.
- * Availability and color do not remove products in this pass.
  * With no price range selected, price does not exclude products.
+ * With no category selected, category does not exclude products.
  *
  * @param products Fetched products
  * @param state Filter state
  * @return Matching products in fetched order
  */
 export function filterProducts(products, state) {
-  const selected = new Set(state.priceRangeIds || []);
+  const selectedPrices = new Set(state.priceRangeIds || []);
+  const selectedCategories = new Set(state.categoryIds || []);
   return (products || []).filter((product) => {
     if (state.inStockOnly && !productIsInStock(product)) {
       return false;
     }
-    if ((state.colorIds || []).length > 0 && !matchesColor(product, state.colorIds)) {
+    if (selectedCategories.size > 0 && !selectedCategories.has(product.categoryId)) {
       return false;
     }
-    if (selected.size === 0) {
+    if (selectedPrices.size === 0) {
       return true;
     }
     const bucket = priceBucket(product.price);
-    return bucket !== null && selected.has(bucket);
+    return bucket !== null && selectedPrices.has(bucket);
   });
 }
 
@@ -185,7 +164,7 @@ function createdAtValue(product) {
 
 /**
  * Order a copy of the products.
- * Best Sellers and both Weight options keep the fetched order.
+ * Best Sellers keeps the fetched order.
  * The input array is never sorted in place.
  *
  * @param products Products to order
@@ -241,13 +220,14 @@ export function sortProducts(products, sort) {
 }
 
 /**
- * Build removable chips for the active availability, price, and color filters.
- * Sort does not create a chip. Order is availability, then price ranges, then colors.
+ * Build removable chips for the active availability, price, and category filters.
+ * Sort does not create a chip. Order is availability, then price ranges, then categories.
  *
  * @param state Filter state
+ * @param categories Category records used for chip labels
  * @return Chip models
  */
-export function activeChips(state) {
+export function activeChips(state, categories = []) {
   const chips = [];
   if (state.inStockOnly) {
     chips.push({
@@ -267,14 +247,26 @@ export function activeChips(state) {
       });
     }
   }
-  const selectedColors = new Set(state.colorIds || []);
-  for (const color of COLORS) {
-    if (selectedColors.has(color.id)) {
+  const selectedCategories = new Set(state.categoryIds || []);
+  const labeled = new Set();
+  for (const category of categories) {
+    if (selectedCategories.has(category.id)) {
+      labeled.add(category.id);
       chips.push({
-        key: `color:${color.id}`,
-        label: color.label,
-        kind: "color",
-        id: color.id,
+        key: `category:${category.id}`,
+        label: category.name,
+        kind: "category",
+        id: category.id,
+      });
+    }
+  }
+  for (const id of state.categoryIds || []) {
+    if (!labeled.has(id)) {
+      chips.push({
+        key: `category:${id}`,
+        label: id,
+        kind: "category",
+        id,
       });
     }
   }
@@ -298,10 +290,10 @@ export function clearChip(state, chip) {
       priceRangeIds: (state.priceRangeIds || []).filter((id) => id !== chip.id),
     };
   }
-  if (chip.kind === "color") {
+  if (chip.kind === "category") {
     return {
       ...state,
-      colorIds: (state.colorIds || []).filter((id) => id !== chip.id),
+      categoryIds: (state.categoryIds || []).filter((id) => id !== chip.id),
     };
   }
   return state;
@@ -324,9 +316,10 @@ export function publishedCatalog(products) {
  *
  * @param products Fetched products
  * @param state Filter state
+ * @param categories Category records used for chip labels
  * @return View model
  */
-export function viewCatalog(products, state) {
+export function viewCatalog(products, state, categories = []) {
   const list = publishedCatalog(products);
   const items = sortProducts(filterProducts(list, state), state.sort);
   const featured = items[0] ?? null;
@@ -338,6 +331,6 @@ export function viewCatalog(products, state) {
     count: items.length,
     catalogCount: list.length,
     priceCounts: countPriceRanges(list),
-    chips: activeChips(state),
+    chips: activeChips(state, categories),
   };
 }

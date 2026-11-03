@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Binary, MongoClient } from "mongodb";
-import { parsePublished, resolveProductImage } from "./productInput.js";
+import { parseInStock, parsePublished, resolveProductImage } from "./productInput.js";
 
 const nameCollation = { locale: "en", strength: 2 };
 let indexesReady = false;
@@ -106,6 +106,7 @@ async function ensureSeed(db) {
         imageUrl: "",
         quantity: 10,
         published: true,
+        inStock: true,
         createdAt: now,
       },
       {
@@ -118,6 +119,7 @@ async function ensureSeed(db) {
         imageUrl: "",
         quantity: 8,
         published: true,
+        inStock: true,
         createdAt: now,
       },
       {
@@ -130,6 +132,7 @@ async function ensureSeed(db) {
         imageUrl: "",
         quantity: 5,
         published: true,
+        inStock: true,
         createdAt: now,
       },
     ]);
@@ -242,6 +245,7 @@ function toProduct(doc, categories) {
     description: doc.description ?? "",
     imageUrl: doc.imageUrl ?? "",
     published: doc.published !== false,
+    inStock: doc.inStock !== false,
     quantity: Number.isInteger(doc.quantity) ? doc.quantity : 0,
     createdAt: doc.createdAt,
     ...(doc.updatedAt ? { updatedAt: doc.updatedAt } : {}),
@@ -461,6 +465,7 @@ export function addProduct(env, input) {
     const quantity = requiredQuantity(input?.quantity);
     const id = randomUUID();
     const published = parsePublished(input?.published, { omitted: "default-true" });
+    const inStock = parseInStock(input?.inStock, { omitted: "default-true" });
     const image = resolveProductImage(input, { id });
     const product = {
       _id: id,
@@ -472,6 +477,7 @@ export function addProduct(env, input) {
       imageUrl: image.imageUrl,
       quantity,
       published,
+      inStock,
       createdAt: new Date().toISOString(),
     };
     const products = db.collection("products");
@@ -525,6 +531,12 @@ export function updateProduct(env, id, input) {
         ? false
         : true
       : parsedPublished;
+    const parsedInStock = parseInStock(input?.inStock, { omitted: "keep" });
+    const inStock = parsedInStock === undefined
+      ? current.inStock === false
+        ? false
+        : true
+      : parsedInStock;
     const image = resolveProductImage(input, {
       id,
       currentImageUrl: current.imageUrl ?? "",
@@ -540,6 +552,7 @@ export function updateProduct(env, id, input) {
       imageUrl: image.imageUrl,
       quantity,
       published,
+      inStock,
       updatedAt,
     };
     const fields = {
@@ -551,6 +564,7 @@ export function updateProduct(env, id, input) {
       imageUrl: product.imageUrl,
       quantity: product.quantity,
       published,
+      inStock,
       updatedAt,
     };
     const images = db.collection("productImages");

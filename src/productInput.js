@@ -60,6 +60,30 @@ export function parsePublished(value, { omitted } = {}) {
 }
 
 /**
+ * Read a stock flag.
+ * An omitted value follows `omitted`. A present non-boolean is rejected.
+ *
+ * @param value Raw inStock value
+ * @param options.omitted `default-true` on create, or `keep` on update
+ * @return Boolean to store, or undefined when an update should keep the current value
+ */
+export function parseInStock(value, { omitted } = {}) {
+  if (value === undefined) {
+    if (omitted === "default-true") {
+      return true;
+    }
+    if (omitted === "keep") {
+      return undefined;
+    }
+    throw httpError(400, "Stock status must be true or false");
+  }
+  if (typeof value === "boolean") {
+    return value;
+  }
+  throw httpError(400, "Stock status must be true or false");
+}
+
+/**
  * Return true when the bytes match the canonical image type.
  * The check stops at the signature. It does not decode the rest of the file.
  *

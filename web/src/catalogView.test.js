@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  COLORS,
   PRICE_RANGES,
   SORT_OPTIONS,
   activeChips,
@@ -43,7 +42,7 @@ function state(overrides = {}) {
     sort: "newest",
     inStockOnly: false,
     priceRangeIds: [],
-    colorIds: [],
+    categoryIds: [],
     ...overrides,
   };
 }
@@ -54,26 +53,14 @@ test("option catalogs match the screenshot order", () => {
     "Newest",
     "Price:High-Low",
     "Price:Low-High",
-    "Weight:Heavy-Light",
-    "Weight:Light-Heavy",
   ]);
-  assert.equal(SORT_OPTIONS.length, 6);
+  assert.equal(SORT_OPTIONS.length, 4);
   assert.deepEqual(PRICE_RANGES.map((range) => range.label), [
     "below $100",
     "$100 to $199",
     "$200 to $299",
     "$300 to $399",
     "$400 and up",
-  ]);
-  assert.deepEqual(COLORS.map((color) => color.label), [
-    "Black",
-    "White",
-    "Gold",
-    "Silver",
-    "Red",
-    "Blue/Navy",
-    "Green",
-    "Yellow",
   ]);
 });
 
@@ -123,17 +110,17 @@ test("price ranges combine with OR", () => {
   assert.deepEqual(matched.map((product) => product.id), ["cheap", "high"]);
 });
 
-test("price counts ignore availability, color, and the selected ranges", () => {
+test("price counts ignore availability, category, and the selected ranges", () => {
   const products = [
-    { id: "a", price: 10 },
-    { id: "b", price: 20 },
-    { id: "c", price: 30 },
-    { id: "d", price: 150 },
+    { id: "a", price: 10, categoryId: "cat-a" },
+    { id: "b", price: 20, categoryId: "cat-a" },
+    { id: "c", price: 30, categoryId: "cat-a" },
+    { id: "d", price: 150, categoryId: "cat-b" },
   ];
   const filters = state({
     inStockOnly: true,
     priceRangeIds: ["below-100"],
-    colorIds: ["gold"],
+    categoryIds: ["cat-a"],
   });
   const view = viewCatalog(products, filters);
   assert.equal(view.priceCounts["100-199"], 1);
@@ -141,16 +128,25 @@ test("price counts ignore availability, color, and the selected ranges", () => {
   assert.equal(view.count, 3);
 });
 
-test("in stock only keeps every product", () => {
-  const matched = filterProducts(seed, state({ inStockOnly: true }));
+test("in stock only keeps products that are not explicitly out of stock", () => {
+  const products = [
+    ...seed,
+    { id: "gone", price: 12, inStock: false },
+  ];
+  const matched = filterProducts(products, state({ inStockOnly: true }));
   assert.deepEqual(matched.map((product) => product.id), seed.map((product) => product.id));
 });
 
-test("selecting every color keeps every product", () => {
-  const matched = filterProducts(seed, state({
-    colorIds: COLORS.map((color) => color.id),
+test("selecting categories keeps only those products", () => {
+  const products = [
+    { id: "tv", price: 10, categoryId: "cat-tv" },
+    { id: "fridge", price: 20, categoryId: "cat-fridge" },
+    { id: "lamp", price: 30, categoryId: "cat-home" },
+  ];
+  const matched = filterProducts(products, state({
+    categoryIds: ["cat-tv", "cat-home"],
   }));
-  assert.deepEqual(matched.map((product) => product.id), seed.map((product) => product.id));
+  assert.deepEqual(matched.map((product) => product.id), ["tv", "lamp"]);
 });
 
 test("newest orders by createdAt descending and breaks ties by id", () => {
@@ -185,7 +181,7 @@ test("price sorts are numeric, tie-break by id, and put non-finite prices last",
   assert.deepEqual(products.map((product) => product.id), ["b", "a", "c", "e", "d"]);
 });
 
-test("best sellers and weight sorts keep the fetched order", () => {
+test("best sellers keeps the fetched order", () => {
   const input = [
     { id: "z", price: 1 },
     { id: "a", price: 9 },
@@ -195,35 +191,39 @@ test("best sellers and weight sorts keep the fetched order", () => {
   assert.deepEqual(byPrice.map((product) => product.id), ["z", "m", "a"]);
   assert.notEqual(byPrice, input);
 
-  for (const sort of ["best-sellers", "weight-desc", "weight-asc"]) {
-    const ordered = sortProducts(input, sort);
-    assert.deepEqual(ordered.map((product) => product.id), ["z", "a", "m"]);
-    assert.notEqual(ordered, input);
-  }
+  const ordered = sortProducts(input, "best-sellers");
+  assert.deepEqual(ordered.map((product) => product.id), ["z", "a", "m"]);
+  assert.notEqual(ordered, input);
   assert.deepEqual(input.map((product) => product.id), ["z", "a", "m"]);
 });
 
-test("chips follow availability, price, then color, and clearing one removes only that chip", () => {
+test("chips follow availability, price, then category, and clearing one removes only that chip", () => {
   const filters = state({
     sort: "price-desc",
     inStockOnly: true,
     priceRangeIds: ["400-up", "below-100"],
-    colorIds: ["gold"],
+    categoryIds: ["cat-home", "cat-tv"],
   });
-  const chips = activeChips(filters);
+  const categories = [
+    { id: "cat-tv", name: "Tivi" },
+    { id: "cat-home", name: "Home" },
+  ];
+  const chips = activeChips(filters, categories);
   assert.deepEqual(chips.map((chip) => chip.label), [
     "In Stock Only",
     "below $100",
     "$400 and up",
-    "Gold",
+    "Tivi",
+    "Home",
   ]);
-  assert.equal(chips.length, 4);
+  assert.equal(chips.length, 5);
 
-  const withoutPrice = activeChips(clearChip(filters, chips[1]));
+  const withoutPrice = activeChips(clearChip(filters, chips[1]), categories);
   assert.deepEqual(withoutPrice.map((chip) => chip.label), [
     "In Stock Only",
     "$400 and up",
-    "Gold",
+    "Tivi",
+    "Home",
   ]);
   assert.deepEqual(filters.priceRangeIds, ["400-up", "below-100"]);
 });
@@ -263,7 +263,7 @@ test("unpublished products drop out of the featured tile, cards, count, and pric
   assert.equal(view.items.some((product) => product.id === "legacy"), true);
 });
 
-test("price counts still ignore stock, color, and selected ranges after publish filtering", () => {
+test("price counts still ignore stock, category, and selected ranges after publish filtering", () => {
   const products = [
     { id: "draft-cheap", price: 10, published: false },
     { id: "shown-cheap", price: 20 },
@@ -273,11 +273,11 @@ test("price counts still ignore stock, color, and selected ranges after publish 
   const view = viewCatalog(products, state({
     inStockOnly: true,
     priceRangeIds: ["below-100"],
-    colorIds: ["gold"],
+    categoryIds: ["cat-other"],
   }));
   assert.equal(view.priceCounts["below-100"], 2);
   assert.equal(view.priceCounts["100-199"], 0);
-  assert.equal(view.count, 2);
+  assert.equal(view.count, 0);
   assert.equal(view.catalogCount, 2);
 });
 

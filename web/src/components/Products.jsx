@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { requestJson } from "../api.js";
 import { displayImageSrc } from "../productImage.js";
+import ActionIcon from "./ActionIcon.jsx";
 import ProductImage from "./ProductImage.jsx";
 
 const MAX_IMAGE_BYTES = 1048576;
@@ -98,7 +99,6 @@ export default function Products() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState("");
   const [publishingId, setPublishingId] = useState("");
-  const [cart, setCart] = useState({});
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -329,6 +329,40 @@ export default function Products() {
   }
 
   /**
+   * Switch one product between in stock and out of stock.
+   * The body keeps the current image and does not send a file.
+   *
+   * @param item Product row
+   */
+  async function toggleStock(item) {
+    setPublishingId(item.id);
+    setError("");
+    try {
+      const body = await requestJson(`/api/products/${item.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        fallback: "Could not save the product",
+        body: JSON.stringify({
+          name: item.name,
+          sku: item.sku ?? "",
+          price: item.price,
+          categoryId: item.categoryId,
+          description: item.description ?? "",
+          quantity: item.quantity ?? 0,
+          published: item.published !== false,
+          inStock: item.inStock === false,
+          imageUrl: item.imageUrl || "",
+        }),
+      });
+      setItems((current) => current.map((row) => (row.id === item.id ? body.item : row)));
+    } catch (stockError) {
+      setError(stockError.message || "Could not save the product");
+    } finally {
+      setPublishingId("");
+    }
+  }
+
+  /**
    * Publish or unpublish one product through the existing update route.
    * The body keeps the current image and does not send a file.
    *
@@ -384,14 +418,6 @@ export default function Products() {
         fallback: "Could not delete the product",
       });
       setItems((current) => current.filter((row) => row.id !== item.id));
-      setCart((current) => {
-        if (!current[item.id]) {
-          return current;
-        }
-        const next = { ...current };
-        delete next[item.id];
-        return next;
-      });
       if (form?.id === item.id) {
         setForm(null);
       }
@@ -402,59 +428,9 @@ export default function Products() {
     }
   }
 
-  /**
-   * Add one unit of a product to the in-memory cart.
-   * The cart cannot exceed the product's stored quantity.
-   *
-   * @param item Product row
-   */
-  function addToCart(item) {
-    setError("");
-    setCart((current) => {
-      const inCart = current[item.id] || 0;
-      if (inCart >= item.quantity) {
-        return current;
-      }
-      return { ...current, [item.id]: inCart + 1 };
-    });
-  }
-
-  const cartCount = Object.values(cart).reduce((sum, count) => sum + count, 0);
-  const cartLines = items.filter((item) => cart[item.id]);
-
   return (
     <>
       {error && <p className="message error">{error}</p>}
-      <section className="cart-summary" aria-label="Cart">
-        <h2>Cart</h2>
-        <p className="cart-count">{cartCount} items</p>
-        {cartLines.length === 0 ? <p className="cart-empty">No products in the cart.</p> : null}
-        {cartLines.length > 0 ? (
-          <ul className="cart-lines">
-            {cartLines.map((item) => (
-              <li key={item.id}>
-                <ProductImage
-                  imageUrl={productImageSrc(item)}
-                  className="product-thumb"
-                  placeholderClassName="product-thumb"
-                />
-                <span>{item.name}</span>
-                <span>{cart[item.id]}</span>
-                <button type="button" className="secondary" onClick={() => {
-                  setCart((current) => {
-                    const next = { ...current };
-                    delete next[item.id];
-                    return next;
-                  });
-                }}
-                >
-                  Remove
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </section>
       <div className="toolbar">
         <button type="button" className="primary" onClick={openAdd}>
           Add
@@ -558,8 +534,9 @@ export default function Products() {
               <th className="col-price">Price</th>
               <th className="col-image">Image</th>
               <th className="col-quantity">Quantity</th>
-              <th>Description</th>
+              <th className="col-description">Description</th>
               <th className="col-status">Status</th>
+              <th className="col-stock">Stock</th>
               <th className="col-action">Action</th>
             </tr>
           </thead>
@@ -585,34 +562,47 @@ export default function Products() {
                   </span>
                 </td>
                 <td className="col-status">{item.published === false ? "Unpublished" : "Published"}</td>
+                <td className="col-stock">{item.inStock === false ? "Out of Stock" : "In Stock"}</td>
                 <td className="col-action">
                   <div className="row-actions">
                     <button
                       type="button"
-                      className="primary"
-                      onClick={() => addToCart(item)}
-                      disabled={(cart[item.id] || 0) >= (item.quantity || 0)}
+                      className="secondary icon-button"
+                      aria-label={item.inStock === false ? "Mark in stock" : "Mark out of stock"}
+                      title={item.inStock === false ? "Mark in stock" : "Mark out of stock"}
+                      onClick={() => toggleStock(item)}
+                      disabled={publishingId === item.id}
                     >
-                      Add to Cart
+                      <ActionIcon name={item.inStock === false ? "in-stock" : "out-of-stock"} />
                     </button>
                     <button
                       type="button"
-                      className="secondary"
+                      className="secondary icon-button"
+                      aria-label={item.published === false ? "Publish" : "Unpublish"}
+                      title={item.published === false ? "Publish" : "Unpublish"}
                       onClick={() => togglePublished(item)}
                       disabled={publishingId === item.id}
                     >
-                      {item.published === false ? "Publish" : "Unpublish"}
-                    </button>
-                    <button type="button" className="secondary" onClick={() => openEdit(item)}>
-                      Edit
+                      <ActionIcon name={item.published === false ? "publish" : "unpublish"} />
                     </button>
                     <button
                       type="button"
-                      className="danger"
+                      className="secondary icon-button"
+                      aria-label="Edit"
+                      title="Edit"
+                      onClick={() => openEdit(item)}
+                    >
+                      <ActionIcon name="edit" />
+                    </button>
+                    <button
+                      type="button"
+                      className="danger icon-button"
+                      aria-label="Delete"
+                      title="Delete"
                       onClick={() => removeItem(item)}
                       disabled={deletingId === item.id}
                     >
-                      {deletingId === item.id ? "Deleting…" : "Delete"}
+                      <ActionIcon name="delete" />
                     </button>
                   </div>
                 </td>
@@ -620,7 +610,7 @@ export default function Products() {
             ))}
             {loaded && items.length === 0 && (
               <tr>
-                <td className="empty" colSpan={10}>
+                <td className="empty" colSpan={11}>
                   No products yet.
                 </td>
               </tr>

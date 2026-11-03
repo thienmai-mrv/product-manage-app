@@ -5,6 +5,7 @@ import {
   MAX_IMAGE_BYTES,
   MAX_IMAGE_URL_LENGTH,
   MAX_JSON_BODY_BYTES,
+  parseInStock,
   parsePublished,
   resolveProductImage,
   uploadImagePath,
@@ -171,6 +172,13 @@ test("update keep is accepted only when the current image is that upload path", 
     }, { id, currentImageUrl: "https://example.com/a.png" }),
     "Image must be an http or https URL",
   );
+});
+
+test("omitted stock status defaults to true, and a non-boolean is rejected", () => {
+  assert.equal(parseInStock(undefined, { omitted: "default-true" }), true);
+  assert.equal(parseInStock(false, { omitted: "default-true" }), false);
+  assert.equal(parseInStock(undefined, { omitted: "keep" }), undefined);
+  assertHttp(() => parseInStock("false", { omitted: "keep" }), "Stock status must be true or false");
 });
 
 test("omitted published defaults to true, explicit false is kept, and null or the string false is rejected", () => {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { requestJson } from "../api.js";
+import ActionIcon from "./ActionIcon.jsx";
 
 const emptyForm = { mode: "add", id: "", name: "", description: "" };
 
@@ -187,16 +188,24 @@ export default function Categories() {
                 <td className="col-count">{item.productCount}</td>
                 <td className="col-action">
                   <div className="row-actions">
-                    <button type="button" className="secondary" onClick={() => openEdit(item)}>
-                      Edit
+                    <button
+                      type="button"
+                      className="secondary icon-button"
+                      aria-label="Edit"
+                      title="Edit"
+                      onClick={() => openEdit(item)}
+                    >
+                      <ActionIcon name="edit" />
                     </button>
                     <button
                       type="button"
-                      className="danger"
+                      className="danger icon-button"
+                      aria-label="Delete"
+                      title="Delete"
                       onClick={() => removeItem(item)}
                       disabled={deletingId === item.id}
                     >
-                      {deletingId === item.id ? "Deleting…" : "Delete"}
+                      <ActionIcon name="delete" />
                     </button>
                   </div>
                 </td>
