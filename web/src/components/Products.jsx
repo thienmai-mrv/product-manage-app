@@ -14,6 +14,7 @@ const emptyForm = {
   name: "",
   sku: "",
   price: "",
+  brandId: "",
   categoryId: "",
   description: "",
   imageUrl: "",
@@ -92,6 +93,7 @@ function productImageSrc(item) {
  */
 export default function Products() {
   const [items, setItems] = useState([]);
+  const [brands, setBrands] = useState([]);
   const [categories, setCategories] = useState([]);
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -106,14 +108,16 @@ export default function Products() {
 
     (async () => {
       try {
-        const [productBody, categoryBody] = await Promise.all([
+        const [productBody, brandBody, categoryBody] = await Promise.all([
           requestJson("/api/products", { fallback: "Could not load products" }),
+          requestJson("/api/brands", { fallback: "Could not load brands" }),
           requestJson("/api/categories", { fallback: "Could not load categories" }),
         ]);
         if (cancelled) {
           return;
         }
         setItems(Array.isArray(productBody.items) ? productBody.items : []);
+        setBrands(Array.isArray(brandBody.items) ? brandBody.items : []);
         setCategories(Array.isArray(categoryBody.items) ? categoryBody.items : []);
         setLoaded(true);
       } catch (loadError) {
@@ -145,6 +149,7 @@ export default function Products() {
     resetFileInput();
     setForm({
       ...emptyForm,
+      brandId: brands[0]?.id || "",
       categoryId: categories[0]?.id || "",
     });
   }
@@ -165,6 +170,7 @@ export default function Products() {
       name: item.name || "",
       sku: item.sku || "",
       price: item.price ?? "",
+      brandId: item.brandId || "",
       categoryId: item.categoryId || "",
       description: item.description || "",
       imageUrl: isHttpUrl(storedImage) ? storedImage : "",
@@ -241,6 +247,10 @@ export default function Products() {
       setError("Name is required");
       return;
     }
+    if (!form.brandId) {
+      setError("Brand is required");
+      return;
+    }
     if (!form.categoryId) {
       setError("Category is required");
       return;
@@ -292,6 +302,7 @@ export default function Products() {
         name: form.name,
         sku: form.sku,
         price: form.price,
+        brandId: form.brandId,
         categoryId: form.categoryId,
         description: form.description,
         quantity,
@@ -346,6 +357,7 @@ export default function Products() {
           name: item.name,
           sku: item.sku ?? "",
           price: item.price,
+          brandId: item.brandId ?? "",
           categoryId: item.categoryId,
           description: item.description ?? "",
           quantity: item.quantity ?? 0,
@@ -380,6 +392,7 @@ export default function Products() {
           name: item.name,
           sku: item.sku ?? "",
           price: item.price,
+          brandId: item.brandId ?? "",
           categoryId: item.categoryId,
           description: item.description ?? "",
           quantity: item.quantity ?? 0,
@@ -457,6 +470,17 @@ export default function Products() {
             />
           </label>
           <label>
+            Brand
+            <select value={form.brandId} onChange={(event) => updateForm("brandId", event.target.value)}>
+              {brands.length === 0 && <option value="">No brands</option>}
+              {brands.map((brand) => (
+                <option key={brand.id} value={brand.id}>
+                  {brand.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
             Category
             <select value={form.categoryId} onChange={(event) => updateForm("categoryId", event.target.value)}>
               {categories.length === 0 && <option value="">No categories</option>}
@@ -530,6 +554,7 @@ export default function Products() {
               <th className="col-no">No</th>
               <th className="col-name">Name</th>
               <th className="col-sku">SKU</th>
+              <th className="col-brand">Brand</th>
               <th className="col-category">Category</th>
               <th className="col-price">Price</th>
               <th className="col-image">Image</th>
@@ -546,6 +571,7 @@ export default function Products() {
                 <td className="col-no">{index + 1}</td>
                 <td className="col-name">{item.name}</td>
                 <td className="col-sku">{item.sku}</td>
+                <td className="col-brand">{item.brandName}</td>
                 <td className="col-category">{item.categoryName}</td>
                 <td className="col-price">{money(item.price)}</td>
                 <td className="col-image">
@@ -610,7 +636,7 @@ export default function Products() {
             ))}
             {loaded && items.length === 0 && (
               <tr>
-                <td className="empty" colSpan={11}>
+                <td className="empty" colSpan={12}>
                   No products yet.
                 </td>
               </tr>

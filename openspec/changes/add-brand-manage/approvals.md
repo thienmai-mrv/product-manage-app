@@ -8,3 +8,4 @@ Append one row per decision. When a gate is decided more than once, the last row
 |---|---|---|---|---|---|
 | G1 | analyst | approved | Thien Mai | 2026-11-04 | Requirements approved. Five open questions in proposal.md stay unresolved for the architect to decide in the technical plan. |
 | G2 | architect | approved | Thien Mai | 2026-11-04 | Technical plan approved, including the ten Dien May Xanh sample brands, required brandId, Brand before Category, and no brand name on dashboard cards. |
+| G3 | developer | approved | Thien Mai | 2026-11-04 | Implementation approved. 51 unit and scenario tests passed. Live MongoDB and browser walkthrough were not run. |

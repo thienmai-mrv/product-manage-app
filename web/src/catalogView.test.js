@@ -300,6 +300,114 @@ test("in stock only does not bring an unpublished product back", () => {
   assert.equal(view.catalogCount, 1);
 });
 
+test("missing or empty brandIds keeps products with and without a brand", () => {
+  const products = [
+    { id: "with", brandId: "brand-samsung", price: 10 },
+    { id: "without", price: 12 },
+    { id: "blank", brandId: "", price: 14 },
+  ];
+  assert.deepEqual(
+    filterProducts(products, state()).map((product) => product.id),
+    ["with", "without", "blank"],
+  );
+  assert.deepEqual(
+    filterProducts(products, state({ brandIds: [] })).map((product) => product.id),
+    ["with", "without", "blank"],
+  );
+});
+
+test("selected brands keep the OR union and drop a product with a missing brandId", () => {
+  const products = [
+    { id: "samsung", brandId: "brand-samsung", price: 10 },
+    { id: "sony", brandId: "brand-sony", price: 20 },
+    { id: "lg", brandId: "brand-lg", price: 30 },
+    { id: "missing", price: 40 },
+  ];
+  assert.deepEqual(
+    filterProducts(products, state({ brandIds: ["brand-samsung", "brand-sony"] })).map((product) => product.id),
+    ["samsung", "sony"],
+  );
+});
+
+test("a brand selection and a category selection keep only products that match both", () => {
+  const products = [
+    { id: "both", brandId: "brand-samsung", categoryId: "cat-tv", price: 10 },
+    { id: "brand-only", brandId: "brand-samsung", categoryId: "cat-home", price: 20 },
+    { id: "category-only", brandId: "brand-sony", categoryId: "cat-tv", price: 30 },
+  ];
+  assert.deepEqual(
+    filterProducts(products, state({
+      brandIds: ["brand-samsung"],
+      categoryIds: ["cat-tv"],
+    })).map((product) => product.id),
+    ["both"],
+  );
+});
+
+test("price counts stay on the whole published list when brandIds is set", () => {
+  const products = [
+    { id: "cheap", price: 10, brandId: "brand-samsung", published: true },
+    { id: "mid", price: 150, brandId: "brand-sony", published: true },
+    { id: "draft", price: 10, brandId: "brand-samsung", published: false },
+  ];
+  const view = viewCatalog(products, state({ brandIds: ["brand-samsung"] }));
+  assert.equal(view.priceCounts["below-100"], 1);
+  assert.equal(view.priceCounts["100-199"], 1);
+  assert.equal(view.count, 1);
+  assert.equal(view.items[0].id, "cheap");
+});
+
+test("chips follow availability, price ranges, brand names, then category names", () => {
+  const filters = state({
+    inStockOnly: true,
+    priceRangeIds: ["below-100"],
+    brandIds: ["brand-sony", "brand-missing", "brand-samsung"],
+    categoryIds: ["cat-home"],
+  });
+  const categories = [{ id: "cat-home", name: "Home" }];
+  const brands = [
+    { id: "brand-samsung", name: "Samsung" },
+    { id: "brand-sony", name: "Sony" },
+  ];
+  const chips = activeChips(filters, categories, brands);
+  assert.deepEqual(chips.map((chip) => chip.label), [
+    "In Stock Only",
+    "below $100",
+    "Samsung",
+    "Sony",
+    "brand-missing",
+    "Home",
+  ]);
+
+  const withoutBrand = activeChips(clearChip(filters, chips[2]), categories, brands);
+  assert.deepEqual(withoutBrand.map((chip) => chip.label), [
+    "In Stock Only",
+    "below $100",
+    "Sony",
+    "brand-missing",
+    "Home",
+  ]);
+  assert.deepEqual(filters.brandIds, ["brand-sony", "brand-missing", "brand-samsung"]);
+  assert.equal(filters.inStockOnly, true);
+  assert.deepEqual(filters.priceRangeIds, ["below-100"]);
+  assert.deepEqual(filters.categoryIds, ["cat-home"]);
+});
+
+test("viewCatalog omits an unpublished product even when its brandId is selected", () => {
+  const products = [
+    { id: "hidden", price: 10, published: false, brandId: "brand-samsung" },
+    { id: "shown", price: 20, published: true, brandId: "brand-sony" },
+  ];
+  const filters = state({ brandIds: ["brand-samsung"] });
+  const view = viewCatalog(products, filters);
+  assert.equal(view.items.some((product) => product.id === "hidden"), false);
+  assert.equal(view.count, 0);
+  assert.deepEqual(
+    filterProducts(products, filters).map((product) => product.id),
+    ["hidden"],
+  );
+});
+
 test("a negative or non-finite price stays visible until a price range is selected", () => {
   const products = [
     { id: "ok", price: 12 },

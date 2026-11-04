@@ -1,5 +1,5 @@
 import { MAX_JSON_BODY_BYTES } from "./productInput.js";
-import { addCategory, addProduct, deleteCategory, deleteProduct, getProductImage, listCategories, listProducts, updateCategory, updateProduct } from "./store.js";
+import { addBrand, addCategory, addProduct, deleteBrand, deleteCategory, deleteProduct, getProductImage, listBrands, listCategories, listProducts, updateBrand, updateCategory, updateProduct } from "./store.js";
 
 /**
  * Build a JSON response.
@@ -62,7 +62,7 @@ function errorResponse(error) {
 }
 
 /**
- * Handle product and category API requests.
+ * Handle product, category, and brand API requests.
  *
  * @param request Incoming request
  * @param env Worker environment
@@ -119,6 +119,24 @@ async function handleApi(request, env, url) {
     }
     if (request.method === "DELETE" && id) {
       return json(await deleteCategory(env, id));
+    }
+    return json({ error: "Method not allowed" }, 405);
+  }
+
+  const brandMatch = url.pathname.match(/^\/api\/brands(?:\/([^/]+))?$/);
+  if (brandMatch) {
+    const id = brandMatch[1] ? decodeURIComponent(brandMatch[1]) : "";
+    if (request.method === "GET" && !id) {
+      return json({ items: await listBrands(env) });
+    }
+    if (request.method === "POST" && !id) {
+      return json({ item: await addBrand(env, await readJson(request)) }, 201);
+    }
+    if (request.method === "PUT" && id) {
+      return json({ item: await updateBrand(env, id, await readJson(request)) });
+    }
+    if (request.method === "DELETE" && id) {
+      return json(await deleteBrand(env, id));
     }
     return json({ error: "Method not allowed" }, 405);
   }

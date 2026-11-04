@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import Brands from "./components/Brands.jsx";
 import Categories from "./components/Categories.jsx";
 import Dashboard from "./components/Dashboard.jsx";
 import Products from "./components/Products.jsx";
@@ -17,19 +18,22 @@ function navClass({ isActive }) {
 const PAGE_TITLES = {
   "/dashboard": "Dashboard",
   "/products": "Products",
+  "/brands": "Brands",
   "/categories": "Categories",
 };
 
 /**
- * Render the dashboard and the product and category admin pages.
- * Express serves this app for /dashboard, /products, and /categories.
+ * Render the dashboard and the product, brand, and category admin pages.
+ * Express serves this app for /dashboard, /products, /brands, and /categories.
  *
  * @return Page element
  */
 export default function App() {
   const location = useLocation();
   const isDashboard = location.pathname === "/dashboard";
-  const isWidePage = location.pathname === "/products" || location.pathname === "/categories";
+  const isWidePage = location.pathname === "/products"
+    || location.pathname === "/brands"
+    || location.pathname === "/categories";
   const pageTitle = PAGE_TITLES[location.pathname] || "Dashboard";
 
   useEffect(() => {
@@ -50,6 +54,9 @@ export default function App() {
         <NavLink to="/products" className={navClass}>
           Products
         </NavLink>
+        <NavLink to="/brands" className={navClass}>
+          Brands
+        </NavLink>
         <NavLink to="/categories" className={navClass}>
           Categories
         </NavLink>
@@ -57,6 +64,7 @@ export default function App() {
       <Routes>
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/products" element={<Products />} />
+        <Route path="/brands" element={<Brands />} />
         <Route path="/categories" element={<Categories />} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

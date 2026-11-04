@@ -31,10 +31,12 @@ export function createFilterState() {
     sort: "newest",
     inStockOnly: false,
     priceRangeIds: [],
+    brandIds: [],
     categoryIds: [],
     collapsed: {
       availability: false,
       price: false,
+      brand: false,
       category: false,
     },
   };
@@ -108,6 +110,7 @@ export function countPriceRanges(products) {
 /**
  * Keep products that match the selected price ranges.
  * With no price range selected, price does not exclude products.
+ * With no brand selected, brand does not exclude products.
  * With no category selected, category does not exclude products.
  *
  * @param products Fetched products
@@ -116,9 +119,13 @@ export function countPriceRanges(products) {
  */
 export function filterProducts(products, state) {
   const selectedPrices = new Set(state.priceRangeIds || []);
+  const selectedBrands = new Set(state.brandIds || []);
   const selectedCategories = new Set(state.categoryIds || []);
   return (products || []).filter((product) => {
     if (state.inStockOnly && !productIsInStock(product)) {
+      return false;
+    }
+    if (selectedBrands.size > 0 && !selectedBrands.has(product.brandId)) {
       return false;
     }
     if (selectedCategories.size > 0 && !selectedCategories.has(product.categoryId)) {
@@ -220,14 +227,15 @@ export function sortProducts(products, sort) {
 }
 
 /**
- * Build removable chips for the active availability, price, and category filters.
- * Sort does not create a chip. Order is availability, then price ranges, then categories.
+ * Build removable chips for the active availability, price, brand, and category filters.
+ * Sort does not create a chip. Order is availability, then price ranges, then brands, then categories.
  *
  * @param state Filter state
  * @param categories Category records used for chip labels
+ * @param brands Brand records used for chip labels
  * @return Chip models
  */
-export function activeChips(state, categories = []) {
+export function activeChips(state, categories = [], brands = []) {
   const chips = [];
   if (state.inStockOnly) {
     chips.push({
@@ -244,6 +252,29 @@ export function activeChips(state, categories = []) {
         label: range.label,
         kind: "price",
         id: range.id,
+      });
+    }
+  }
+  const selectedBrands = new Set(state.brandIds || []);
+  const labeledBrands = new Set();
+  for (const brand of brands) {
+    if (selectedBrands.has(brand.id)) {
+      labeledBrands.add(brand.id);
+      chips.push({
+        key: `brand:${brand.id}`,
+        label: brand.name,
+        kind: "brand",
+        id: brand.id,
+      });
+    }
+  }
+  for (const id of state.brandIds || []) {
+    if (!labeledBrands.has(id)) {
+      chips.push({
+        key: `brand:${id}`,
+        label: id,
+        kind: "brand",
+        id,
       });
     }
   }
@@ -290,6 +321,12 @@ export function clearChip(state, chip) {
       priceRangeIds: (state.priceRangeIds || []).filter((id) => id !== chip.id),
     };
   }
+  if (chip.kind === "brand") {
+    return {
+      ...state,
+      brandIds: (state.brandIds || []).filter((id) => id !== chip.id),
+    };
+  }
   if (chip.kind === "category") {
     return {
       ...state,
@@ -317,9 +354,10 @@ export function publishedCatalog(products) {
  * @param products Fetched products
  * @param state Filter state
  * @param categories Category records used for chip labels
+ * @param brands Brand records used for chip labels
  * @return View model
  */
-export function viewCatalog(products, state, categories = []) {
+export function viewCatalog(products, state, categories = [], brands = []) {
   const list = publishedCatalog(products);
   const items = sortProducts(filterProducts(list, state), state.sort);
   const featured = items[0] ?? null;
@@ -331,6 +369,6 @@ export function viewCatalog(products, state, categories = []) {
     count: items.length,
     catalogCount: list.length,
     priceCounts: countPriceRanges(list),
-    chips: activeChips(state, categories),
+    chips: activeChips(state, categories, brands),
   };
 }
