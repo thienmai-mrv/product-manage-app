@@ -49,4 +49,4 @@
 | — | none | — | No blockers, defects, or security issues found. | Approved as implemented. |
 
 **Decision:** APPROVED
-**Pull request:** pending
+**Pull request:** https://github.com/thienmai-mrv/product-manage-app/pull/2
