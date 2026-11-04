@@ -7,41 +7,41 @@ Provides product catalog storage, validation, REST API endpoints (`/api/products
 ## Requirements
 
 ### Requirement: List products with resolved category names
-The system SHALL return all products ordered by `createdAt` descending from `GET /api/products` as `{ items }`, where each item includes `id`, `name`, `sku`, `price`, `categoryId`, resolved `categoryName`, `description`, `imageUrl`, `quantity`, `createdAt`, and optional `updatedAt`. `imageUrl` is an empty string when the product has no image. `quantity` is a whole number and is `0` when an older document has no quantity.
+The system SHALL return all products ordered by `createdAt` descending from `GET /api/products` as `{ items }`, where each item includes `id`, `name`, `sku`, `price`, `brandId`, resolved `brandName`, `categoryId`, resolved `categoryName`, `description`, `imageUrl`, `quantity`, `published`, `inStock`, `createdAt`, and optional `updatedAt`. `brandName` and `categoryName` resolve from the product's brand and category or `""` when missing.
 
 #### Scenario: Fetch products from catalog
 - **WHEN** a client sends `GET /api/products`
-- **THEN** the system responds with HTTP 200 and `{ items }` ordered by `createdAt` descending with each product's `categoryName` populated from its category
+- **THEN** the system responds with HTTP 200 and `{ items }` ordered by `createdAt` descending with each product's `brandName` and `categoryName` populated from its assigned brand and category
 
 #### Scenario: Seed starter products on first request
-- **WHEN** a client sends `GET /api/products` and both `categories` and `products` collections are empty
-- **THEN** the system inserts the starter categories and starter products (`Wireless Mouse`, `Field Guide`, `Desk Lamp`) before returning the list
+- **WHEN** a client sends `GET /api/products` and the catalog collections are empty
+- **THEN** the system seeds sample brands (from `https://www.dienmayxanh.com`), starter categories, and starter products (`Wireless Mouse`, `Field Guide`, `Desk Lamp`) with valid brand and category assignments before returning the list
 
 ### Requirement: Create product with validated fields
-The system SHALL create a product via `POST /api/products` requiring a non-empty trimmed `name`, an existing `categoryId`, a finite non-negative numeric `price` rounded to two decimal places, and a whole-number `quantity` that is zero or greater, along with optional trimmed `sku`, `description`, and `imageUrl`. `imageUrl` must be empty or an `http` or `https` URL.
+The system SHALL create a product via `POST /api/products` requiring a non-empty trimmed `name`, a valid `brandId` matching an existing brand, an existing `categoryId`, a finite non-negative numeric `price` rounded to two decimal places, and a whole-number `quantity` that is zero or greater, along with optional trimmed `sku`, `description`, product image (uploaded file or `http`/`https` `imageUrl`), `published` state, and `inStock` status.
 
 #### Scenario: Create valid product
-- **WHEN** a client sends `POST /api/products` with a valid `name`, existing `categoryId`, non-negative `price`, whole-number `quantity`, and optional `sku`, `description`, and `imageUrl`
-- **THEN** the system stores the product with a generated UUID `id` and `createdAt` timestamp and responds with HTTP 201 and `{ item }`
+- **WHEN** a client sends `POST /api/products` with a valid `name`, existing `brandId`, existing `categoryId`, non-negative `price`, whole-number `quantity`, and optional `sku`, `description`, image, `published` state, and `inStock` status
+- **THEN** the system stores the product with a generated UUID `id` and `createdAt` timestamp and responds with HTTP 201 and `{ item }` including `brandId` and resolved `brandName`
 
 #### Scenario: Reject product with missing name or invalid category
-- **WHEN** a client sends `POST /api/products` with a blank `name` or a `categoryId` that does not match an existing category
-- **THEN** the system responds with HTTP 400 and an error message (`"Name is required"`, `"Category is required"`, or `"Category not found"`)
+- **WHEN** a client sends `POST /api/products` with a blank `name`, a missing or non-existent `brandId`, or a missing or non-existent `categoryId`
+- **THEN** the system responds with HTTP 400 and an error message (`"Name is required"`, `"Brand is required"`, `"Brand not found"`, `"Category is required"`, or `"Category not found"`)
 
 #### Scenario: Reject product with negative or non-numeric price
 - **WHEN** a client sends `POST /api/products` with a negative or non-finite `price`
 - **THEN** the system responds with HTTP 400 and `{ "error": "Price must be a number that is zero or greater" }`
 
 #### Scenario: Reject product with an invalid image or quantity
-- **WHEN** a client sends `POST /api/products` with an image that is not an `http` or `https` URL, or a quantity that is negative or not a whole number
-- **THEN** the system responds with HTTP 400 and `{ "error": "Image must be an http or https URL" }` or `{ "error": "Quantity must be a whole number that is zero or greater" }`
+- **WHEN** a client sends `POST /api/products` with an invalid image URL or invalid uploaded image file, or a quantity that is negative or not a whole number
+- **THEN** the system responds with HTTP 400 and a validation error message in `{ "error": "<message>" }`
 
 ### Requirement: Update existing product
-The system SHALL update an existing product's `name`, `sku`, `price`, `categoryId`, `description`, `imageUrl`, `quantity`, and `updatedAt` timestamp via `PUT /api/products/:id` using the same field validations as product creation.
+The system SHALL update an existing product's `name`, `sku`, `price`, `brandId`, `categoryId`, `description`, `imageUrl` (from an uploaded image file or URL), `quantity`, `published` state, `inStock` status, and `updatedAt` timestamp via `PUT /api/products/:id` using the same field validations as product creation.
 
 #### Scenario: Update product fields
-- **WHEN** a client sends `PUT /api/products/:id` for an existing product with valid fields
-- **THEN** the system updates the product document, sets `updatedAt`, and responds with HTTP 200 and `{ item }`
+- **WHEN** a client sends `PUT /api/products/:id` for an existing product with valid fields including an existing `brandId` and `categoryId`
+- **THEN** the system updates the product document, sets `updatedAt`, and responds with HTTP 200 and `{ item }` with the updated `brandId` and resolved `brandName`
 
 #### Scenario: Update non-existent product
 - **WHEN** a client sends `PUT /api/products/:id` for an `id` that does not exist
@@ -59,8 +59,23 @@ The system SHALL delete a product by `id` via `DELETE /api/products/:id` and ret
 - **THEN** the system responds with HTTP 404 and `{ "error": "Product not found" }`
 
 ### Requirement: Products administrative UI
-The system SHALL serve the `/products` administrative page in both Express and Cloudflare Worker runtimes, displaying a product table (`No`, `Name`, `SKU`, `Category`, `Price`, `Image`, `Quantity`, `Description`, `Action`) with inline add, edit, and confirmed delete workflows. The page also keeps an in-memory cart. `Add to Cart` adds one unit of that product and stops when the cart quantity reaches the product's stored `quantity`. The cart is not written to the API and is cleared on reload.
+The system SHALL serve the `/products` administrative page in both Express and Cloudflare Worker runtimes, displaying the navigation menu in order `Dashboard | Products | Brands | Categories`, a product table including a `Brand` column (`No`, `Name`, `SKU`, `Brand`, `Category`, `Price`, `Image`, `Quantity`, `Description`, `Status`, `Stock`, `Action`), and inline add/edit forms where a product chooses a brand from `/api/brands` the same way it chooses a category.
 
 #### Scenario: View and manage products on admin page
 - **WHEN** an administrator navigates to `/products`
-- **THEN** the page loads `/api/products` and `/api/categories` in parallel, renders the product table with prices formatted to two decimal places, shows the image and quantity, and provides `Add`, `Add to Cart`, `Edit`, and `Delete` actions
+- **THEN** the page loads `/api/products`, `/api/brands`, and `/api/categories` in parallel, renders the product table with the `Brand` column showing each product's `brandName`, and provides `Add` plus row actions for stock, publish, edit, and delete
+
+#### Scenario: Edit a product to change its brand
+- **WHEN** an administrator clicks `Edit` on a product row on `/products`, selects a different brand from the `Brand` dropdown, and submits the form
+- **THEN** the page sends `PUT /api/products/:id` with the selected `brandId` and updates the product row's `Brand` column with the resolved `brandName`
+
+### Requirement: Assign and validate product brand
+The system SHALL associate each product with a brand (`brandId` and resolved `brandName`) and validate brand selection on product creation and update in the same way category selection is validated across both Express and Cloudflare Worker runtimes.
+
+#### Scenario: Choose a brand when adding or editing a product on the products page
+- **WHEN** an administrator opens the Add or Edit form on `/products`
+- **THEN** the form displays a `Brand` selector populated from `/api/brands` (defaulting to the first available brand on add and the product's current `brandId` on edit, matching the `Category` selector) and saves the chosen `brandId`
+
+#### Scenario: Reject product with missing or unknown brand
+- **WHEN** a client sends `POST /api/products` or `PUT /api/products/:id` with a blank `brandId` or a `brandId` that does not match an existing brand
+- **THEN** the system responds with HTTP 400 and `{ "error": "Brand is required" }` or `{ "error": "Brand not found" }`
