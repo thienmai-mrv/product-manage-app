@@ -1,13 +1,13 @@
 # Memory Index
 
-Last refreshed: 2026-11-03
+Last refreshed: 2026-11-04
 
 ## Core (required)
 
 | File | Purpose | Status |
 |---|---|---|
-| [STATUS.md](STATUS.md) | Approval lifecycle | approved, version 1 |
-| [approvals.md](approvals.md) | GM0 / GM5 log | GM0 approved 2026-11-03 |
+| [STATUS.md](STATUS.md) | Approval lifecycle | pending-approval, version 2 |
+| [approvals.md](approvals.md) | GM0 / GM5 log | GM0 approved 2026-11-03. GM5 not recorded. |
 | [project-overview.md](project-overview.md) | What the product is | current |
 | [architecture.md](architecture.md) | System structure and data flow | current |
 | [domain-model.md](domain-model.md) | Entities and business rules | current |
@@ -23,11 +23,11 @@ Last refreshed: 2026-11-03
 
 | Directory | Purpose |
 |---|---|
-| [modules/](modules/) | [products](modules/products.md), [categories](modules/categories.md), [dashboard](modules/dashboard.md), [store](modules/store.md) |
-| [apis/](apis/) | [products](apis/products.md), [categories](apis/categories.md), [pages](apis/pages.md) |
+| [modules/](modules/) | [products](modules/products.md), [brands](modules/brands.md), [categories](modules/categories.md), [dashboard](modules/dashboard.md), [store](modules/store.md) |
+| [apis/](apis/) | [products](apis/products.md), [brands](apis/brands.md), [categories](apis/categories.md), [pages](apis/pages.md) |
 | [decisions/](decisions/) | [001 dual runtime](decisions/001-dual-express-worker-runtime.md), [002 per-request Mongo client](decisions/002-per-request-mongo-client.md), [003 URI outside source](decisions/003-mongodb-uri-outside-source.md) |
-| [changelog/](changelog/) | Empty until the first memory update |
-| [reports/](reports/) | [init-report.md](reports/init-report.md) |
+| [changelog/](changelog/) | [add-brand-manage](changelog/add-brand-manage.md) |
+| [reports/](reports/) | [init-report.md](reports/init-report.md), [update-add-brand-manage.md](reports/update-add-brand-manage.md) |
 
 ## Templates
 

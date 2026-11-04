@@ -2,12 +2,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
+import brandRoutes from "./routes/brands.js";
 import categoryRoutes from "./routes/categories.js";
 import productRoutes from "./routes/products.js";
 
 const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const webDir = path.join(rootDir, "web");
-const pagePaths = ["/dashboard", "/products", "/categories"];
+const pagePaths = ["/dashboard", "/products", "/brands", "/categories"];
 
 /**
  * Turn a thrown store error into a JSON response.
@@ -62,7 +63,7 @@ function sendPage(vite) {
 
 /**
  * Build the Express app.
- * Express serves the API and the Dashboard, Product, and Category page routes.
+ * Express serves the API and the Dashboard, Product, Brand, and Category page routes.
  *
  * @param options.dev True when Vite should transform the React pages
  * @return Express app
@@ -72,6 +73,7 @@ export async function createApp({ dev = false } = {}) {
   app.use(express.json({ limit: "2mb" }));
 
   app.use("/api/categories", categoryRoutes);
+  app.use("/api/brands", brandRoutes);
   app.use("/api/products", productRoutes);
   app.use("/api", (req, res) => {
     res.status(404).json({ error: "Not found" });

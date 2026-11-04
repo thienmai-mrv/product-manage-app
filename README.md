@@ -58,13 +58,18 @@ Features are delivered by specialized agents orchestrated by Orca Desktop, speci
 | GET | `/` | Redirects to `/dashboard`. |
 | GET | `/dashboard` | React dashboard page. |
 | GET | `/products` | React product page. |
+| GET | `/brands` | React brand page. |
 | GET | `/categories` | React category page. |
 | GET | `/api/products` | Lists products. |
-| POST | `/api/products` | `{ "name", "sku", "price", "categoryId", "description", "imageUrl", "quantity" }` with optional `published` and optional `imageFile`. |
-| PUT | `/api/products/<id>` | Same fields as create, including optional `published` and optional `imageFile`. |
+| POST | `/api/products` | `{ "name", "sku", "price", "brandId", "categoryId", "description", "imageUrl", "quantity" }` with optional `published` and optional `imageFile`. |
+| PUT | `/api/products/<id>` | Same fields as create, including `brandId`, optional `published`, and optional `imageFile`. |
 | GET | `/api/products/<id>/image` | Returns the uploaded image bytes. |
 | DELETE | `/api/products/<id>` | Deletes that product. |
 | GET | `/api/categories` | Lists categories. |
 | POST | `/api/categories` | `{ "name", "description" }`. |
 | PUT | `/api/categories/<id>` | Same fields as create. |
 | DELETE | `/api/categories/<id>` | Deletes a category that has no products. |
+| GET | `/api/brands` | Lists brands. |
+| POST | `/api/brands` | `{ "name", "description" }`. |
+| PUT | `/api/brands/<id>` | Same fields as create. |
+| DELETE | `/api/brands/<id>` | Deletes a brand that has no products. |

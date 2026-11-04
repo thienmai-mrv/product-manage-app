@@ -109,7 +109,11 @@ function validateChange(location) {
 
 function requireMemoryApproved() {
   const lifecycle = (statusField("Lifecycle") ?? "").toLowerCase();
-  check(lifecycle === "approved", `memory STATUS lifecycle is approved (found: ${lifecycle || "none"})`);
+  const pendingUpdate = stage === "memory-update" && mode === "verify" && lifecycle === "pending-approval";
+  const message = pendingUpdate
+    ? `memory STATUS lifecycle is pending-approval for memory-update verify (found: ${lifecycle})`
+    : `memory STATUS lifecycle is approved (found: ${lifecycle || "none"})`;
+  check(lifecycle === "approved" || pendingUpdate, message);
   const decision = latestGateDecision(join(".ai", "memory", "approvals.md"), "GM0");
   check(decision === "approved", `GM0 is approved in .ai/memory/approvals.md (found: ${decision ?? "none"})`);
 }

@@ -1,6 +1,6 @@
 # Glossary
 
-**Last updated:** 2026-11-02
+**Last updated:** 2026-11-04
 
 | Term | Meaning | Avoid confusing with |
 |---|---|---|
@@ -13,11 +13,12 @@
 | store | `src/store.js`, the shared Mongo access and validation module | the React storefront or `web/dist` |
 | storefront | The `/dashboard` customer view | the `/products` admin page |
 | catalog | The product list, especially the dashboard view model in `catalogView.js` | the Mongo collection name alone |
-| category name collation | Mongo collation `{ locale: "en", strength: 2 }` used for uniqueness | a case-sensitive string compare |
-| seed | Insert of Electronics, Books, Home and three products when both collections are empty | a migration framework |
+| category name collation | Mongo collation `{ locale: "en", strength: 2 }` used for category and brand name uniqueness | a case-sensitive string compare |
+| brand | A catalog label stored in `brands` and referenced by `product.brandId` | the retailer site the sample names were taken from, or a product category |
+| seed | Insert of ten sample brands when `brands` is empty, then Electronics, Books, Home and three products when both of those collections are empty | a migration framework or a live fetch of dienmayxanh.com |
 | fetched order | API list order (`createdAt` descending) before client sort | `newest` sort, which re-sorts and tie-breaks by `id` |
 | featured tile | First product after filter and sort, rendered without price or `BUY NOW` | a stored flag |
-| chip | A removable dashboard filter pill | a product SKU |
+| chip | A removable dashboard filter pill. Brand chips sit after price chips and before category chips. | a product SKU |
 | cart | In-memory counts on `/products`, capped by `quantity` | checkout or the dashboard |
 | wishlist heart | In-memory `aria-pressed` set on the dashboard | a saved API resource |
 | ASSETS | Worker binding that serves `web/dist` | the Express static middleware |

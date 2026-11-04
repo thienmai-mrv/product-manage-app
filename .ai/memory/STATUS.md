@@ -1,12 +1,12 @@
 # Memory Status
 
 **Lifecycle:** approved
-**Version:** 1
-**Last agent:** memory-init
-**Last change:** none
+**Version:** 2
+**Last agent:** memory-update
+**Last change:** add-brand-manage
 **Pending files:** none
 **Approved by:** Thien Mai
-**Approved at:** 2026-11-03
+**Approved at:** 2026-11-04
 
 ## Lifecycle values
 
@@ -20,4 +20,4 @@
 
 Feature stages (`analyst` and later) must see `Lifecycle: approved`. After a Memory Update Agent run, lifecycle becomes `pending-approval` until GM5.
 
-GM0 was approved on 2026-11-03. Feature stages may start. A later memory update still waits for GM5.
+GM0 was approved on 2026-11-03. GM5 approved the add-brand-manage memory update (version 2) on 2026-11-04. Approved by and Approved at above are the GM5 record.

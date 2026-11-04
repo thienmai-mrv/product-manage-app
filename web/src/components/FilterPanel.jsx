@@ -35,15 +35,17 @@ function FilterSection({ id, title, collapsed, onToggle, children }) {
 }
 
 /**
- * Render the sort, availability, price, and category controls.
+ * Render the sort, availability, price, brand, and category controls.
  * The panel is controlled by the dashboard. It does not decide which products match.
  *
  * @param props.state Filter state
  * @param props.priceCounts Whole-catalog bucket counts
+ * @param props.brands Brands available for filtering
  * @param props.categories Categories available for filtering
  * @param props.onSort Sort change handler
  * @param props.onToggleInStock Availability handler
  * @param props.onTogglePrice Price checkbox handler
+ * @param props.onToggleBrand Brand checkbox handler
  * @param props.onToggleCategory Category checkbox handler
  * @param props.onToggleSection Collapse handler
  * @return Filter panel
@@ -51,14 +53,17 @@ function FilterSection({ id, title, collapsed, onToggle, children }) {
 export default function FilterPanel({
   state,
   priceCounts,
+  brands,
   categories,
   onSort,
   onToggleInStock,
   onTogglePrice,
+  onToggleBrand,
   onToggleCategory,
   onToggleSection,
 }) {
   const selectedPrices = new Set(state.priceRangeIds);
+  const selectedBrands = new Set(state.brandIds);
   const selectedCategories = new Set(state.categoryIds);
 
   return (
@@ -112,6 +117,25 @@ export default function FilterPanel({
             />
             <span>{range.label}</span>
             <span className="price-count">{priceCounts[range.id] ?? 0}</span>
+          </label>
+        ))}
+      </FilterSection>
+
+      <FilterSection
+        id="brand"
+        title="Brands"
+        collapsed={state.collapsed.brand}
+        onToggle={onToggleSection}
+      >
+        {brands.length === 0 ? <p className="message">No brands yet.</p> : null}
+        {brands.map((brand) => (
+          <label key={brand.id} className="price-row">
+            <input
+              type="checkbox"
+              checked={selectedBrands.has(brand.id)}
+              onChange={() => onToggleBrand(brand.id)}
+            />
+            <span>{brand.name}</span>
           </label>
         ))}
       </FilterSection>

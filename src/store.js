@@ -58,7 +58,8 @@ async function withDatabase(env, fn) {
 }
 
 /**
- * Create the category name index once in this isolate.
+ * Create the category and brand name indexes once in this isolate.
+ * The ready flag is set only after both indexes succeed, so a failed brand index is retried.
  *
  * @param db Mongo database
  */
@@ -70,15 +71,73 @@ async function ensureIndexes(db) {
     { name: 1 },
     { unique: true, collation: nameCollation, name: "category_name_ci" },
   );
+  await db.collection("brands").createIndex(
+    { name: 1 },
+    { unique: true, collation: nameCollation, name: "brand_name_ci" },
+  );
   indexesReady = true;
 }
 
+const sampleBrands = [
+  { _id: "brand-samsung", name: "Samsung" },
+  { _id: "brand-sony", name: "Sony" },
+  { _id: "brand-lg", name: "LG" },
+  { _id: "brand-panasonic", name: "Panasonic" },
+  { _id: "brand-toshiba", name: "Toshiba" },
+  { _id: "brand-apple", name: "Apple" },
+  { _id: "brand-electrolux", name: "Electrolux" },
+  { _id: "brand-daikin", name: "Daikin" },
+  { _id: "brand-sharp", name: "Sharp" },
+  { _id: "brand-casper", name: "Casper" },
+];
+
 /**
- * Insert the starter catalog when both collections are empty.
+ * Insert the ten sample brands when the brands collection is empty.
+ * Timestamps are one second apart so Samsung is newest.
+ *
+ * @param db Mongo database
+ */
+async function ensureBrandSeed(db) {
+  const brands = db.collection("brands");
+  if (await brands.countDocuments() > 0) {
+    return;
+  }
+  const newest = Date.now();
+  try {
+    await brands.insertMany(sampleBrands.map((brand, index) => ({
+      _id: brand._id,
+      name: brand.name,
+      description: "",
+      createdAt: new Date(newest - index * 1000).toISOString(),
+    })));
+  } catch (error) {
+    if (error?.code !== 11000) {
+      throw error;
+    }
+  }
+}
+
+/**
+ * Resolve a starter product brand.
+ * A missing name uses the newest brand. The caller has already confirmed one brand exists.
+ *
+ * @param brands Brand collection
+ * @param name Brand name
+ * @param newestId Newest brand id
+ * @return Brand id
+ */
+async function starterBrandId(brands, name, newestId) {
+  const found = await findBrandByName(brands, name);
+  return found?._id ?? newestId;
+}
+
+/**
+ * Insert sample brands, then the starter catalog when both category and product collections are empty.
  *
  * @param db Mongo database
  */
 async function ensureSeed(db) {
+  await ensureBrandSeed(db);
   const categories = db.collection("categories");
   const products = db.collection("products");
   const [categoryCount, productCount] = await Promise.all([
@@ -88,6 +147,15 @@ async function ensureSeed(db) {
   if (categoryCount > 0 || productCount > 0) {
     return;
   }
+  const brands = db.collection("brands");
+  const newestList = await brands.find().sort({ createdAt: -1 }).toArray();
+  const newest = newestList[0];
+  if (!newest) {
+    return;
+  }
+  const mouseBrandId = await starterBrandId(brands, "Samsung", newest._id);
+  const guideBrandId = await starterBrandId(brands, "Sony", newest._id);
+  const lampBrandId = await starterBrandId(brands, "Panasonic", newest._id);
   const now = new Date().toISOString();
   try {
     await categories.insertMany([
@@ -101,6 +169,7 @@ async function ensureSeed(db) {
         name: "Wireless Mouse",
         sku: "EL-100",
         price: 24.5,
+        brandId: mouseBrandId,
         categoryId: "cat-electronics",
         description: "Compact Bluetooth mouse",
         imageUrl: "",
@@ -114,6 +183,7 @@ async function ensureSeed(db) {
         name: "Field Guide",
         sku: "BK-015",
         price: 18,
+        brandId: guideBrandId,
         categoryId: "cat-books",
         description: "Illustrated pocket guide",
         imageUrl: "",
@@ -127,6 +197,7 @@ async function ensureSeed(db) {
         name: "Desk Lamp",
         sku: "HM-220",
         price: 39,
+        brandId: lampBrandId,
         categoryId: "cat-home",
         description: "Adjustable LED lamp",
         imageUrl: "",
@@ -197,13 +268,14 @@ function requiredQuantity(value) {
 }
 
 /**
- * Turn a duplicate-key error into a category conflict.
+ * Turn a duplicate-key error into a name conflict.
  *
  * @param error Caught error
+ * @param message Conflict text
  */
-function rethrowDuplicate(error) {
+function rethrowDuplicate(error, message) {
   if (error?.code === 11000) {
-    throw httpError(409, "A category with that name already exists");
+    throw httpError(409, message);
   }
   throw error;
 }
@@ -228,18 +300,23 @@ function toCategory(doc, productCount) {
 
 /**
  * Map a product document to an API item.
+ * A missing brand id or a missing brand document reads back as empty strings.
  *
  * @param doc Product document
  * @param categories Category documents
+ * @param brands Brand documents
  * @return Product item
  */
-function toProduct(doc, categories) {
+function toProduct(doc, categories, brands) {
   const category = categories.find((item) => item._id === doc.categoryId);
+  const brand = (brands || []).find((item) => item._id === doc.brandId);
   return {
     id: doc._id,
     name: doc.name,
     sku: doc.sku ?? "",
     price: doc.price,
+    brandId: doc.brandId ?? "",
+    brandName: brand?.name || "",
     categoryId: doc.categoryId,
     categoryName: category?.name || "",
     description: doc.description ?? "",
@@ -263,6 +340,19 @@ function toProduct(doc, categories) {
 function findCategoryByName(categories, name, exceptId) {
   const query = exceptId ? { name, _id: { $ne: exceptId } } : { name };
   return categories.findOne(query, { collation: nameCollation });
+}
+
+/**
+ * Find a brand with the same name, ignoring letter case.
+ *
+ * @param brands Brand collection
+ * @param name Brand name
+ * @param exceptId Id to ignore
+ * @return Matching document, or null
+ */
+function findBrandByName(brands, name, exceptId) {
+  const query = exceptId ? { name, _id: { $ne: exceptId } } : { name };
+  return brands.findOne(query, { collation: nameCollation });
 }
 
 /**
@@ -290,11 +380,12 @@ export function listCategories(env) {
  */
 export function listProducts(env) {
   return withDatabase(env, async (db) => {
-    const [products, categories] = await Promise.all([
+    const [products, categories, brands] = await Promise.all([
       db.collection("products").find().sort({ createdAt: -1 }).toArray(),
       db.collection("categories").find().toArray(),
+      db.collection("brands").find().toArray(),
     ]);
-    return products.map((product) => toProduct(product, categories));
+    return products.map((product) => toProduct(product, categories, brands));
   });
 }
 
@@ -321,7 +412,7 @@ export function addCategory(env, input) {
     try {
       await categories.insertOne(category);
     } catch (error) {
-      rethrowDuplicate(error);
+      rethrowDuplicate(error, "A category with that name already exists");
     }
     return toCategory(category, 0);
   });
@@ -353,7 +444,7 @@ export function updateCategory(env, id, input) {
         { $set: { name, description: optionalText(input?.description), updatedAt } },
       );
     } catch (error) {
-      rethrowDuplicate(error);
+      rethrowDuplicate(error, "A category with that name already exists");
     }
     const productCount = await db.collection("products").countDocuments({ categoryId: id });
     return toCategory({ ...current, name, description: optionalText(input?.description), updatedAt }, productCount);
@@ -379,6 +470,128 @@ export function deleteCategory(env, id) {
       throw httpError(409, "Move or delete products in this category first");
     }
     await categories.deleteOne({ _id: id });
+    return { deleted: true };
+  });
+}
+
+/**
+ * Map a brand document to an API item.
+ *
+ * @param doc Brand document
+ * @param productCount Products in the brand
+ * @return Brand item
+ */
+function toBrand(doc, productCount) {
+  return {
+    id: doc._id,
+    name: doc.name,
+    description: doc.description ?? "",
+    createdAt: doc.createdAt,
+    ...(doc.updatedAt ? { updatedAt: doc.updatedAt } : {}),
+    productCount,
+  };
+}
+
+/**
+ * List brands with a product count.
+ * Counts are computed from product brandId values and are not stored.
+ *
+ * @param env Worker or local environment
+ * @return Brand rows, newest first
+ */
+export function listBrands(env) {
+  return withDatabase(env, async (db) => {
+    const brands = await db.collection("brands").find().sort({ createdAt: -1 }).toArray();
+    const products = await db.collection("products").find({}, { projection: { brandId: 1 } }).toArray();
+    return brands.map((brand) => toBrand(
+      brand,
+      products.filter((product) => product.brandId === brand._id).length,
+    ));
+  });
+}
+
+/**
+ * Create a brand.
+ *
+ * @param env Worker or local environment
+ * @param input Name and description
+ * @return Created brand
+ */
+export function addBrand(env, input) {
+  return withDatabase(env, async (db) => {
+    const brands = db.collection("brands");
+    const name = requiredText(input?.name, "Name");
+    if (await findBrandByName(brands, name)) {
+      throw httpError(409, "A brand with that name already exists");
+    }
+    const brand = {
+      _id: randomUUID(),
+      name,
+      description: optionalText(input?.description),
+      createdAt: new Date().toISOString(),
+    };
+    try {
+      await brands.insertOne(brand);
+    } catch (error) {
+      rethrowDuplicate(error, "A brand with that name already exists");
+    }
+    return toBrand(brand, 0);
+  });
+}
+
+/**
+ * Update a brand.
+ * Keeping the brand's own name, including a case-only change, succeeds.
+ *
+ * @param env Worker or local environment
+ * @param id Brand id
+ * @param input Name and description
+ * @return Updated brand
+ */
+export function updateBrand(env, id, input) {
+  return withDatabase(env, async (db) => {
+    const brands = db.collection("brands");
+    const current = await brands.findOne({ _id: id });
+    if (!current) {
+      throw httpError(404, "Brand not found");
+    }
+    const name = requiredText(input?.name, "Name");
+    if (await findBrandByName(brands, name, id)) {
+      throw httpError(409, "A brand with that name already exists");
+    }
+    const updatedAt = new Date().toISOString();
+    try {
+      await brands.updateOne(
+        { _id: id },
+        { $set: { name, description: optionalText(input?.description), updatedAt } },
+      );
+    } catch (error) {
+      rethrowDuplicate(error, "A brand with that name already exists");
+    }
+    const productCount = await db.collection("products").countDocuments({ brandId: id });
+    return toBrand({ ...current, name, description: optionalText(input?.description), updatedAt }, productCount);
+  });
+}
+
+/**
+ * Delete a brand that has no products.
+ *
+ * @param env Worker or local environment
+ * @param id Brand id
+ * @return Delete result
+ */
+export function deleteBrand(env, id) {
+  return withDatabase(env, async (db) => {
+    const brands = db.collection("brands");
+    const brand = await brands.findOne({ _id: id });
+    if (!brand) {
+      throw httpError(404, "Brand not found");
+    }
+    const used = await db.collection("products").countDocuments({ brandId: id });
+    if (used > 0) {
+      throw httpError(409, "Move or delete products in this brand first");
+    }
+    await brands.deleteOne({ _id: id });
     return { deleted: true };
   });
 }
@@ -455,8 +668,15 @@ async function restoreProductImage(images, id, previous) {
  */
 export function addProduct(env, input) {
   return withDatabase(env, async (db) => {
-    const categories = await db.collection("categories").find().toArray();
+    const [categories, brands] = await Promise.all([
+      db.collection("categories").find().toArray(),
+      db.collection("brands").find().toArray(),
+    ]);
     const name = requiredText(input?.name, "Name");
+    const brandId = requiredText(input?.brandId, "Brand");
+    if (!brands.some((brand) => brand._id === brandId)) {
+      throw httpError(400, "Brand not found");
+    }
     const categoryId = requiredText(input?.categoryId, "Category");
     if (!categories.some((category) => category._id === categoryId)) {
       throw httpError(400, "Category not found");
@@ -472,6 +692,7 @@ export function addProduct(env, input) {
       name,
       sku: optionalText(input?.sku),
       price,
+      brandId,
       categoryId,
       description: optionalText(input?.description),
       imageUrl: image.imageUrl,
@@ -496,7 +717,7 @@ export function addProduct(env, input) {
         await deleteProductImage(images, id);
       }
     }
-    return toProduct(product, categories);
+    return toProduct(product, categories, brands);
   });
 }
 
@@ -515,12 +736,19 @@ export function updateProduct(env, id, input) {
     if (!current) {
       throw httpError(404, "Product not found");
     }
-    const categories = await db.collection("categories").find().toArray();
+    const [categories, brands] = await Promise.all([
+      db.collection("categories").find().toArray(),
+      db.collection("brands").find().toArray(),
+    ]);
+    const name = requiredText(input?.name, "Name");
+    const brandId = requiredText(input?.brandId, "Brand");
+    if (!brands.some((brand) => brand._id === brandId)) {
+      throw httpError(400, "Brand not found");
+    }
     const categoryId = requiredText(input?.categoryId, "Category");
     if (!categories.some((category) => category._id === categoryId)) {
       throw httpError(400, "Category not found");
     }
-    const name = requiredText(input?.name, "Name");
     const sku = optionalText(input?.sku);
     const price = requiredPrice(input?.price);
     const description = optionalText(input?.description);
@@ -547,6 +775,7 @@ export function updateProduct(env, id, input) {
       name,
       sku,
       price,
+      brandId,
       categoryId,
       description,
       imageUrl: image.imageUrl,
@@ -559,6 +788,7 @@ export function updateProduct(env, id, input) {
       name: product.name,
       sku: product.sku,
       price: product.price,
+      brandId: product.brandId,
       categoryId: product.categoryId,
       description: product.description,
       imageUrl: product.imageUrl,
@@ -583,7 +813,7 @@ export function updateProduct(env, id, input) {
     } else {
       await products.updateOne({ _id: id }, { $set: fields });
     }
-    return toProduct(product, categories);
+    return toProduct(product, categories, brands);
   });
 }
 

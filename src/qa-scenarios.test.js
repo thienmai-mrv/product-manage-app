@@ -403,6 +403,13 @@ test("Scenario: Seed starter products on first request & Fetch products from cat
     assert.ok(item.categoryName.length > 0);
     assert.equal(Number.isInteger(item.quantity), true);
   }
+  const byId = Object.fromEntries(expressBody.items.map((item) => [item.id, item]));
+  assert.equal(byId["prod-mouse"].brandId, "brand-samsung");
+  assert.equal(byId["prod-mouse"].brandName, "Samsung");
+  assert.equal(byId["prod-guide"].brandId, "brand-sony");
+  assert.equal(byId["prod-guide"].brandName, "Sony");
+  assert.equal(byId["prod-lamp"].brandId, "brand-panasonic");
+  assert.equal(byId["prod-lamp"].brandName, "Panasonic");
 
   // Add a newer product and verify createdAt descending order on Worker
   const createRes = await callWorker("/api/products", {
@@ -412,6 +419,7 @@ test("Scenario: Seed starter products on first request & Fetch products from cat
       name: "Newer Item",
       sku: "NW-1",
       price: 15,
+      brandId: "brand-sony",
       categoryId: "cat-books",
       description: "Newest item",
       quantity: 3,
@@ -440,6 +448,7 @@ test("Scenario: Set product image by uploading a valid file (Express, Worker, an
       name: "Uploaded Camera",
       sku: "CAM-01",
       price: 199.95,
+      brandId: "brand-samsung",
       categoryId: "cat-electronics",
       description: "Digital camera",
       quantity: 4,
@@ -482,6 +491,7 @@ test("Scenario: Set product image by entering an http or https URL (Express & Wo
       name: "URL Lamp",
       sku: "LP-02",
       price: 45,
+      brandId: "brand-panasonic",
       categoryId: "cat-home",
       description: "Lamp with URL image",
       quantity: 2,
@@ -510,6 +520,7 @@ test("Scenario: Switch product image between uploaded file and URL on edit (Expr
       name: "Switchable Item",
       sku: "SW-1",
       price: 29,
+      brandId: "brand-samsung",
       categoryId: "cat-electronics",
       description: "Switch test",
       quantity: 5,
@@ -528,6 +539,7 @@ test("Scenario: Switch product image between uploaded file and URL on edit (Expr
       name: "Switchable Item",
       sku: "SW-1",
       price: 29,
+      brandId: "brand-samsung",
       categoryId: "cat-electronics",
       description: "Switch test",
       quantity: 5,
@@ -551,6 +563,7 @@ test("Scenario: Switch product image between uploaded file and URL on edit (Expr
       name: "Switchable Item",
       sku: "SW-1",
       price: 29,
+      brandId: "brand-samsung",
       categoryId: "cat-electronics",
       description: "Switch test",
       quantity: 5,
@@ -578,36 +591,45 @@ test("Scenario: Reject invalid uploaded image file or invalid image URL & Reject
       "Name is required",
     ],
     [
-      { name: "Valid", categoryId: "", price: 10, quantity: 1 },
+      { name: "Valid", brandId: "", categoryId: "cat-books", price: 10, quantity: 1 },
+      "Brand is required",
+    ],
+    [
+      { name: "Valid", brandId: "brand-missing", categoryId: "cat-books", price: 10, quantity: 1 },
+      "Brand not found",
+    ],
+    [
+      { name: "Valid", brandId: "brand-samsung", categoryId: "", price: 10, quantity: 1 },
       "Category is required",
     ],
     [
-      { name: "Valid", categoryId: "cat-missing", price: 10, quantity: 1 },
+      { name: "Valid", brandId: "brand-samsung", categoryId: "cat-missing", price: 10, quantity: 1 },
       "Category not found",
     ],
     [
-      { name: "Valid", categoryId: "cat-books", price: -1, quantity: 1 },
+      { name: "Valid", brandId: "brand-samsung", categoryId: "cat-books", price: -1, quantity: 1 },
       "Price must be a number that is zero or greater",
     ],
     [
-      { name: "Valid", categoryId: "cat-books", price: "abc", quantity: 1 },
+      { name: "Valid", brandId: "brand-samsung", categoryId: "cat-books", price: "abc", quantity: 1 },
       "Price must be a number that is zero or greater",
     ],
     [
-      { name: "Valid", categoryId: "cat-books", price: 10, quantity: -1 },
+      { name: "Valid", brandId: "brand-samsung", categoryId: "cat-books", price: 10, quantity: -1 },
       "Quantity must be a whole number that is zero or greater",
     ],
     [
-      { name: "Valid", categoryId: "cat-books", price: 10, quantity: 1.5 },
+      { name: "Valid", brandId: "brand-samsung", categoryId: "cat-books", price: 10, quantity: 1.5 },
       "Quantity must be a whole number that is zero or greater",
     ],
     [
-      { name: "Valid", categoryId: "cat-books", price: 10, quantity: 1, imageUrl: "ftp://bad.example/a.png" },
+      { name: "Valid", brandId: "brand-samsung", categoryId: "cat-books", price: 10, quantity: 1, imageUrl: "ftp://bad.example/a.png" },
       "Image must be an http or https URL",
     ],
     [
       {
         name: "Valid",
+        brandId: "brand-samsung",
         categoryId: "cat-books",
         price: 10,
         quantity: 1,
@@ -618,6 +640,7 @@ test("Scenario: Reject invalid uploaded image file or invalid image URL & Reject
     [
       {
         name: "Valid",
+        brandId: "brand-samsung",
         categoryId: "cat-books",
         price: 10,
         quantity: 1,
@@ -628,6 +651,7 @@ test("Scenario: Reject invalid uploaded image file or invalid image URL & Reject
     [
       {
         name: "Valid",
+        brandId: "brand-samsung",
         categoryId: "cat-books",
         price: 10,
         quantity: 1,
@@ -638,6 +662,7 @@ test("Scenario: Reject invalid uploaded image file or invalid image URL & Reject
     [
       {
         name: "Valid",
+        brandId: "brand-samsung",
         categoryId: "cat-books",
         price: 10,
         quantity: 1,
@@ -649,6 +674,7 @@ test("Scenario: Reject invalid uploaded image file or invalid image URL & Reject
     [
       {
         name: "Valid",
+        brandId: "brand-samsung",
         categoryId: "cat-books",
         price: 10,
         quantity: 1,
@@ -693,6 +719,7 @@ test("Scenario: Publish and unpublish a product & Attempt to change publish stat
       name: "Wireless Mouse",
       sku: "EL-100",
       price: 24.5,
+      brandId: "brand-samsung",
       categoryId: "cat-electronics",
       description: "Compact Bluetooth mouse",
       quantity: 10,
@@ -713,6 +740,7 @@ test("Scenario: Publish and unpublish a product & Attempt to change publish stat
       name: "Wireless Mouse v2",
       sku: "EL-100",
       price: 25,
+      brandId: "brand-samsung",
       categoryId: "cat-electronics",
       description: "Compact Bluetooth mouse",
       quantity: 10,
@@ -730,6 +758,7 @@ test("Scenario: Publish and unpublish a product & Attempt to change publish stat
       name: "Wireless Mouse v2",
       sku: "EL-100",
       price: 25,
+      brandId: "brand-samsung",
       categoryId: "cat-electronics",
       description: "Compact Bluetooth mouse",
       quantity: 10,
@@ -890,6 +919,7 @@ test("Scenario: Dashboard published-only visibility, unpublish/publish reload, p
         name: "Published GIF Item",
         sku: "GF-1",
         price: 150,
+        brandId: "brand-samsung",
         categoryId: "cat-electronics",
         description: "",
         quantity: 3,
@@ -906,6 +936,7 @@ test("Scenario: Dashboard published-only visibility, unpublish/publish reload, p
         name: "Secret Draft Item",
         sku: "DR-1",
         price: 250,
+        brandId: "brand-sony",
         categoryId: "cat-books",
         description: "",
         quantity: 5,
@@ -941,6 +972,7 @@ test("Scenario: Dashboard published-only visibility, unpublish/publish reload, p
         name: draftItem.name,
         sku: draftItem.sku,
         price: draftItem.price,
+        brandId: draftItem.brandId,
         categoryId: draftItem.categoryId,
         description: draftItem.description,
         quantity: draftItem.quantity,
@@ -966,6 +998,7 @@ test("Scenario: Dashboard published-only visibility, unpublish/publish reload, p
           name: prod.name,
           sku: prod.sku,
           price: prod.price,
+          brandId: prod.brandId,
           categoryId: prod.categoryId,
           description: prod.description,
           quantity: prod.quantity,
@@ -1005,6 +1038,82 @@ test("Scenario: Dashboard published-only visibility, unpublish/publish reload, p
   } finally {
     globalThis.fetch = origFetch;
   }
+});
+
+test("Scenario: Seed brands, reject a case-insensitive duplicate, update, and block delete while a product uses the brand", async () => {
+  const expressList = await fetch(`${expressBaseUrl}/api/brands`);
+  assert.equal(expressList.status, 200);
+  const { items } = await expressList.json();
+  assert.deepEqual(items.map((item) => item.name), [
+    "Samsung",
+    "Sony",
+    "LG",
+    "Panasonic",
+    "Toshiba",
+    "Apple",
+    "Electrolux",
+    "Daikin",
+    "Sharp",
+    "Casper",
+  ]);
+  assert.equal(items[0].id, "brand-samsung");
+  assert.equal(items[0].description, "");
+  assert.equal(items[0].productCount, 1);
+  assert.equal(items.at(-1).id, "brand-casper");
+  assert.equal(items.find((item) => item.id === "brand-lg").productCount, 0);
+
+  const duplicate = await callWorker("/api/brands", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: " samsung ", description: "ignored" }),
+  });
+  assert.equal(duplicate.status, 409);
+  assert.deepEqual(await duplicate.json(), { error: "A brand with that name already exists" });
+
+  const created = await fetch(`${expressBaseUrl}/api/brands`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "Acme", description: " Extra " }),
+  });
+  assert.equal(created.status, 201);
+  const { item: acme } = await created.json();
+  assert.equal(acme.name, "Acme");
+  assert.equal(acme.description, "Extra");
+  assert.equal(acme.productCount, 0);
+  assert.equal(typeof acme.id, "string");
+
+  const renamed = await fetch(`${expressBaseUrl}/api/brands/${acme.id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "acme", description: "Kept" }),
+  });
+  assert.equal(renamed.status, 200);
+  const { item: renamedItem } = await renamed.json();
+  assert.equal(renamedItem.name, "acme");
+  assert.equal(renamedItem.description, "Kept");
+  assert.ok(renamedItem.updatedAt);
+
+  const blocked = await fetch(`${expressBaseUrl}/api/brands/brand-samsung`, { method: "DELETE" });
+  assert.equal(blocked.status, 409);
+  assert.deepEqual(await blocked.json(), { error: "Move or delete products in this brand first" });
+
+  const removed = await callWorker(`/api/brands/${acme.id}`, { method: "DELETE" });
+  assert.equal(removed.status, 200);
+  assert.deepEqual(await removed.json(), { deleted: true });
+
+  const missing = await callWorker("/api/brands/missing-brand", { method: "DELETE" });
+  assert.equal(missing.status, 404);
+  assert.deepEqual(await missing.json(), { error: "Brand not found" });
+
+  const byId = await callWorker("/api/brands/brand-samsung");
+  assert.equal(byId.status, 405);
+  assert.deepEqual(await byId.json(), { error: "Method not allowed" });
+
+  const workerList = await callWorker("/api/brands");
+  assert.equal(workerList.status, 200);
+  const workerItems = (await workerList.json()).items;
+  assert.equal(workerItems[0].name, "Samsung");
+  assert.equal(workerItems.some((item) => item.id === acme.id), false);
 });
 
 test("Runtime parity edge cases: 413 body limit, Worker 400 invalid JSON, and 405 unsupported method on image path", async () => {

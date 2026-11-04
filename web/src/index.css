@@ -226,6 +226,7 @@ td {
 }
 
 .product-table .col-sku,
+.product-table .col-brand,
 .product-table .col-category {
   width: 140px;
 }
@@ -244,7 +245,7 @@ td {
 
 .product-table {
   width: 100%;
-  min-width: 1396px;
+  min-width: 1536px;
 }
 
 .product-table .col-name {
