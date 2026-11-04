@@ -1,6 +1,6 @@
 # Conventions
 
-**Last updated:** 2026-11-02
+**Last updated:** 2026-11-04
 
 ## Repository layout
 
@@ -21,8 +21,8 @@
 | Kind | Convention | Example |
 |---|---|---|
 | Source modules | camelCase `.js` / `.jsx` | `catalogView.js`, `Products.jsx` |
-| API collections | plural nouns | `/api/products`, `/api/categories` |
-| Mongo collections | same plural names | `products`, `categories` |
+| API collections | plural nouns | `/api/products`, `/api/brands`, `/api/categories` |
+| Mongo collections | same plural names | `products`, `brands`, `categories` |
 | API id field | `id` | mapped from Mongo `_id` |
 | OpenSpec change | kebab-case | archived `product-dashboard` |
 | Feature branch | `feature/<change>` | required for feature agents by `AGENTS.md` |
@@ -38,9 +38,9 @@
 
 ## Error responses
 
-- 400 validation (`Name is required`, `Category is required`, `Category not found`, price, image, quantity, Worker non-JSON body).
-- 404 missing product or category on update/delete, or unknown `/api` path on Express.
-- 409 category name conflict, or category delete while products remain.
+- 400 validation (`Name is required`, `Brand is required`, `Brand not found`, `Category is required`, `Category not found`, price, image, quantity, Worker non-JSON body).
+- 404 missing product, brand, or category on update/delete, or unknown `/api` path on Express.
+- 409 brand or category name conflict, or brand or category delete while products remain. Brand conflict text is `A brand with that name already exists`. Brand delete text is `Move or delete products in this brand first`.
 - 500 missing `MONGODB_URI` keeps the message `MONGODB_URI is not set`. Other 500s become `Request failed`.
 - Worker unsupported method on a matched API path returns 405 `{ "error": "Method not allowed" }`.
 - Worker `OPTIONS` under `/api` returns 204 with an empty body and no CORS headers.
@@ -52,7 +52,7 @@
 - Dashboard filter logic stays in `catalogView.js` so `node:test` can cover it without rendering React.
 - Admin save prepends a created row or replaces the edited row in React state. It does not refetch.
 - Delete asks `window.confirm`.
-- Navigation is `NavLink` to `/dashboard`, `/products`, and `/categories`. Dashboard omits the `<h1>` header.
+- Navigation is `NavLink` in order `/dashboard`, `/products`, `/brands`, `/categories`. Dashboard omits the `<h1>` header. Products, Brands, and Categories render `<h1>`.
 
 ## Git and branches
 
@@ -71,5 +71,6 @@
 
 - Diverging Express and Worker JSON contracts.
 - Putting `MONGODB_URI` in `wrangler.toml` or in memory files.
-- Treating the dashboard's always-true stock and color predicates as accidental bugs. They match `openspec/specs/product-dashboard/spec.md`.
+- Treating In Stock Only as a no-op. `productIsInStock` excludes `inStock === false`.
+- Adding color swatches or weight sorts during a brand change. The dashboard spec still describes them, and the current filter panel does not. See KI-007.
 - Adding application features during memory init or memory update.

@@ -1,6 +1,6 @@
 # Security
 
-**Last updated:** 2026-11-02
+**Last updated:** 2026-11-04
 
 ## Secrets
 
@@ -17,7 +17,7 @@
 
 | Boundary | What is trusted | Notes |
 |---|---|---|
-| Browser to API | Nothing in the JSON body. | Store validates name, category id, price, quantity, and image URL. |
+| Browser to API | Nothing in the JSON body. | Store validates name, brand id, category id, price, quantity, and image URL. Brand names and descriptions are trimmed in `src/store.js`. |
 | Browser to pages | Same origin. | No cookies, sessions, or CSRF tokens exist. |
 | Server to MongoDB | The URI from the environment. | A new client is opened per call and closed in `finally`. |
 | Worker assets | Built static files. | API and `/` are handled in the Worker before assets (`run_worker_first`). |
@@ -33,16 +33,17 @@ Image URLs are not fetched by the server. The browser loads them in `<img>`. A f
 - Price must be finite and `>= 0`, then rounded to two decimal places.
 - Quantity must be an integer `>= 0`.
 - `imageUrl` must be empty or an `http`/`https` URL no longer than 2048 characters.
+- `brandId` must match an existing brand document on product create and update. Blank is `"Brand is required"`. Unknown is `"Brand not found"`.
 - `categoryId` must match an existing category document.
-- Category names are compared with collation strength 2 and a unique index.
+- Category and brand names are compared with collation strength 2 and unique indexes `category_name_ci` and `brand_name_ci`.
 - Worker JSON parse failure becomes HTTP 400. Express uses the framework JSON parser.
 - There is no HTML sanitizer. Names and descriptions are rendered as React text nodes, not `dangerouslySetInnerHTML`. No `dangerouslySetInnerHTML` usage was found.
 
 ## AuthN / AuthZ
 
-None. Every page and every API verb is available to any caller who can reach the host. Spec scenarios that say "administrator" describe the person using `/products` or `/categories`. They do not describe an implemented role.
+None. Every page and every API verb is available to any caller who can reach the host. Spec scenarios that say "administrator" describe the person using `/products`, `/brands`, or `/categories`. They do not describe an implemented role. Brand admin is the same public surface as category admin (KI-003).
 
-`DELETE` is confirmed only in the browser (`window.confirm`). The API deletes without a confirmation token.
+`DELETE` is confirmed only in the browser (`window.confirm`). The API deletes without a confirmation token. Sample brand names are hardcoded. The seed does not request `dienmayxanh.com`.
 
 ## Dependency and supply-chain notes
 

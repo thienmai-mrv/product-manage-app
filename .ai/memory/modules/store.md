@@ -1,8 +1,8 @@
 # Module: store
 
-**Last updated:** 2026-11-02
+**Last updated:** 2026-11-04
 **Paths:** `src/store.js`, `src/env.js`, `src/empty-encryption.cjs`
-**OpenSpec:** product and category specs share this module. There is no separate store spec.
+**OpenSpec:** product, brand, and category specs share this module. There is no separate store spec.
 
 ## Responsibility
 
@@ -13,7 +13,8 @@ One Mongo data access path for Express and the Worker: connect, index, seed, val
 | Kind | Name | Notes |
 |---|---|---|
 | Functions | `listCategories`, `addCategory`, `updateCategory`, `deleteCategory` | Each opens and closes a client. |
-| Functions | `listProducts`, `addProduct`, `updateProduct`, `deleteProduct` | Same. |
+| Functions | `listBrands`, `addBrand`, `updateBrand`, `deleteBrand` | Same wrapper. `productCount` is computed from `brandId`. |
+| Functions | `listProducts`, `addProduct`, `updateProduct`, `deleteProduct` | Same. Product writes load brands and require `brandId`. |
 | Env shape | `{ MONGODB_URI, MONGODB_DB }` | Express builds it in `localEnv()`. Worker passes its binding env. |
 
 ## Dependencies
@@ -28,8 +29,8 @@ One Mongo data access path for Express and the Worker: connect, index, seed, val
 
 - Missing `MONGODB_URI` throws HTTP 500 with message `MONGODB_URI is not set` before connecting.
 - Client is closed with `close(true)` in `finally`.
-- Category index is created once per isolate (`indexesReady`).
-- Seed runs inside the same connection, before the caller's operation.
+- Category index `category_name_ci` and brand index `brand_name_ci` are created in one pass. `indexesReady` is set only after both succeed.
+- `ensureBrandSeed` runs at the start of `ensureSeed`, before the category and product gate, inside the same connection.
 - HTTP errors are `Error` objects with a numeric `status`.
 - Mapping omits `updatedAt` when the document has none.
 - `toProduct` coerces a non-integer `quantity` to `0`.
