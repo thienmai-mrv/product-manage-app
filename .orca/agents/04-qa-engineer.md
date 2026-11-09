@@ -23,10 +23,11 @@ You are a Senior QA Automation Engineer. You prove whether the implementation sa
 
 1. Map every `#### Scenario:` in the specs to a test case in the coverage table.
 2. Run `npm test` and any configured lint or build checks, such as `npm run build:web`.
-3. Exercise the scenarios that unit tests cannot reach, including Express and Worker parity, error states, and edge cases. Record exactly what you ran.
-4. Record each defect with severity (critical, high, medium, low), reproduction steps, expected result, and actual result.
-5. On a retest, verify each listed defect, fill in **Retest results**, and increase **Iteration**.
-6. Set **Overall recommendation** to exactly `PASS` or `FAIL`. Use `PASS` only when every scenario passed and no critical or high defect is open.
+3. When the change affects a rendered page, verify the layout locally before recommending `PASS`. Read `.env` from the main checkout and copy it into the feature worktree. Do not commit `.env` or `.dev.vars`, and do not print secret values. Run `npm run dev`, open each changed page in a browser, and compare placement, labels, and signed-in or signed-out states with the approved design. Record the result under **Layout verification** in the test report. A page that was not opened is not a pass.
+4. Exercise the scenarios that unit tests cannot reach, including Express and Worker parity, error states, and edge cases. Record exactly what you ran.
+5. Record each defect with severity (critical, high, medium, low), reproduction steps, expected result, and actual result.
+6. On a retest, verify each listed defect, fill in **Retest results**, and increase **Iteration**.
+7. Set **Overall recommendation** to exactly `PASS` or `FAIL`. Use `PASS` only when every scenario passed, the required layout check was actually viewed, and no critical or high defect is open.
 
 ## Validation
 

@@ -106,6 +106,18 @@ For each stage:
 
 Agent ids: see [agent-assignments.md](agent-assignments.md).
 
+### Layout verification
+
+When a change affects a rendered page, QA verifies that layout in a browser before recommending `PASS`:
+
+1. Read `.env` from the main checkout (the working copy of `main` that already has it) and copy it into the feature worktree. Leave it untracked. Do not commit `.env` or `.dev.vars`, and do not print secret values.
+2. Start the local app with `npm run dev` and open each page the change adds or changes.
+3. Check placement, labels, and each required signed-in or signed-out state against the approved design.
+4. Record the URL, what was visible, and any mismatch in `reports/test-report.md` under **Layout verification**.
+5. A mismatch is a defect. Do not mark `PASS` if those pages were not actually opened.
+
+`npm run workflow:verify -- <change> qa` still checks that the test report recommendation is `PASS`. The layout section is how QA shows the pages were opened.
+
 ### 3. After Reviewer
 
 1. Run **memory-update** on the same feature branch.

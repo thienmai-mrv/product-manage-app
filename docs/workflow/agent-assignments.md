@@ -14,7 +14,7 @@ orca orchestration worker-start --task <task_id> --worktree path:<worktree-path>
 | A1 | Requirement Analyst (BA) | `analyst` | `.orca/agents/01-requirement-analyst.md` | `antigravity` | Analyze business requirements | `proposal.md`, `specs/**/spec.md` |
 | A2 | Solution Architect | `architect` | `.orca/agents/02-solution-architect.md` | `cursor` | Technical architecture | `design.md`, `tasks.md` |
 | A3 | Software Developer | `developer` | `.orca/agents/03-software-developer.md` | `cursor` | Implement functionality | Source, tests, `reports/development-report.md` |
-| A4 | QA Engineer | `qa` | `.orca/agents/04-qa-engineer.md` | `antigravity` | Test implementation | `reports/test-report.md` |
+| A4 | QA Engineer | `qa` | `.orca/agents/04-qa-engineer.md` | `antigravity` | Test implementation and verify changed page layout locally | `reports/test-report.md` |
 | A5 | PR Reviewer | `reviewer` | `.orca/agents/05-pr-reviewer.md` | `antigravity` | Review, archive, open PR | `reports/review-report.md`, PR URL |
 | A6 | Memory Update | `memory-update` | `.orca/agents/06-memory-updater.md` | `cursor` | Update Project Memory after the feature | `.ai/memory/**`, `changelog/<change>.md` |
 
