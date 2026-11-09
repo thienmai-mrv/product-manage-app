@@ -51,4 +51,4 @@
 | F-02 | info | `openspec/changes/add-login-function/reports/test-report.md` | A few narrative descriptions in the QA scenario table use shorthand names (`pma_session`, `ADMIN_*`, `"Invalid credentials"`), while `src/login-qa.test.js` and the implementation test and enforce the exact `design.md` contracts (`admin_session`, `AUTH_BOOTSTRAP_*`, `"Invalid username, email, or password"`). | Non-blocking report prose discrepancy; automated test assertions match `design.md` and pass. |
 
 **Decision:** APPROVED
-**Pull request:** pending
+**Pull request:** https://github.com/thienmai-mrv/product-manage-app/pull/3
