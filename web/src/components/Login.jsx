@@ -30,28 +30,34 @@ export default function Login({ onSubmit, error = "" }) {
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      <label>
-        Username or email
-        <input
-          name="account"
-          autoComplete="username"
-          value={account}
-          onChange={(event) => setAccount(event.target.value)}
-        />
-      </label>
-      <label>
-        Password
-        <input
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-        />
-      </label>
-      <button type="submit">Login</button>
-      {message ? <p className="message error">{message}</p> : null}
-    </form>
+    <section className="login-screen">
+      <div className="login-card">
+        <p className="login-kicker">Administrator</p>
+        <p className="login-lead">Sign in to manage products, brands, and categories.</p>
+        <form className="config-form" onSubmit={handleSubmit}>
+          <label>
+            Username or email
+            <input
+              name="account"
+              autoComplete="username"
+              value={account}
+              onChange={(event) => setAccount(event.target.value)}
+            />
+          </label>
+          <label>
+            Password
+            <input
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          </label>
+          <button type="submit" className="primary">Login</button>
+          {message ? <p className="message error">{message}</p> : null}
+        </form>
+      </div>
+    </section>
   );
 }

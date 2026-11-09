@@ -628,12 +628,11 @@ test("Brands administrative UI (/brands): navigation order, page title and heade
     const appHtml = renderToStaticMarkup(
       React.createElement(MemoryRouter, { initialEntries: ["/brands"] }, React.createElement(App)),
     );
-    assert.ok(appHtml.includes('<main class="page page-wide">'));
+    assert.ok(appHtml.includes('<main class="page page-wide page-admin">'));
     assert.ok(appHtml.includes("<h1>Brands</h1>"));
 
     const navMatches = [...appHtml.matchAll(/<a [^>]*class="nav-link(?: active)?"[^>]*>([^<]+)<\/a>/g)];
-    assert.deepEqual(navMatches.map((m) => m[1]), ["Dashboard", "Products", "Brands", "Categories"]);
-    assert.match(navMatches[2][0], /nav-link active/);
+    assert.deepEqual(navMatches.map((m) => m[1]), ["Dashboard"]);
 
     // 2. Mount Brands component interactively
     const view = mountInteractive(Brands);
@@ -920,7 +919,7 @@ test("product-dashboard: GET / 302 redirect, menu order, Brands section before C
     assert.ok(dashAppHtml.includes('<main class="page page-dashboard">'));
     assert.ok(!dashAppHtml.includes("<h1>"));
     const navLinks = [...dashAppHtml.matchAll(/<a [^>]*class="nav-link(?: active)?"[^>]*>([^<]+)<\/a>/g)];
-    assert.deepEqual(navLinks.map((m) => m[1]), ["Dashboard", "Products", "Brands", "Categories"]);
+    assert.deepEqual(navLinks.map((m) => m[1]), ["Dashboard"]);
     assert.match(navLinks[0][0], /nav-link active/);
 
     // 3. Mount Dashboard and verify parallel fetch, section order, and initial catalog

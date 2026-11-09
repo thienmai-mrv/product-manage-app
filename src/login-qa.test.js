@@ -1368,7 +1368,7 @@ test("End-to-end React Router + App journeys: public Dashboard browsing, Login/L
     assert.ok(html.includes("3 items"));
 
     const navLabels = [...html.matchAll(/<a [^>]*class="nav-link(?: active)?"[^>]*>([^<]+)<\/a>/g)].map((m) => m[1]);
-    assert.deepEqual(navLabels, ["Dashboard", "Products", "Brands", "Categories"]);
+    assert.deepEqual(navLabels, ["Dashboard"]);
 
     // Sort by Price:High-Low on public Dashboard
     const sortRadios = rootView.findAll((n) => n.type === "input" && n.props?.type === "radio");
@@ -1427,17 +1427,8 @@ test("End-to-end React Router + App journeys: public Dashboard browsing, Login/L
     await app.settle();
     assert.equal(globalThis.document.title, "Dashboard");
 
-    // Click NavLink `Brands` while logged out -> redirects to `/login`
     const navLinksLoggedOut = app.findAll((n) => n.type === "a" && String(n.props?.className || "").includes("nav-link"));
-    navLinksLoggedOut[2].props.onClick({ preventDefault() {}, button: 0 });
-    await app.settle();
-    assert.equal(globalThis.document.title, "Login");
-
-    // Navigate back to Dashboard via NavLink, then click `Login` button in nav
-    const dashNav = app.findAll((n) => n.type === "a" && n.props?.children === "Dashboard")[0];
-    dashNav.props.onClick({ preventDefault() {}, button: 0 });
-    await app.settle();
-    assert.equal(globalThis.document.title, "Dashboard");
+    assert.deepEqual(navLinksLoggedOut.map((link) => link.props?.children), ["Dashboard"]);
 
     const loginBtn = app.findAll((n) => n.type === "button" && n.props?.className === "nav-auth")[0];
     assert.equal(loginBtn.props.children, "Login");
@@ -1480,6 +1471,8 @@ test("End-to-end React Router + App journeys: public Dashboard browsing, Login/L
     assert.ok(cookieJar.startsWith("admin_session="));
     assert.equal(globalThis.document.title, "Products");
     html = app.toHtml();
+    const signedInNav = [...html.matchAll(/<a [^>]*class="nav-link(?: active)?"[^>]*>([^<]+)<\/a>/g)].map((m) => m[1]);
+    assert.deepEqual(signedInNav, ["Dashboard", "Products", "Brands", "Categories"]);
     assert.ok(html.includes("<h1>Products</h1>"));
     assert.ok(html.includes('<button type="button" class="nav-auth">Logout</button>'));
     assert.ok(html.includes("Wireless Mouse"));
