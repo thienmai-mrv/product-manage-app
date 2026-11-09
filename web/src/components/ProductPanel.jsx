@@ -1,4 +1,5 @@
 import { formatPrice } from "../catalogView.js";
+import LoadingState from "./LoadingState.jsx";
 import { displayImageSrc } from "../productImage.js";
 import ProductImage from "./ProductImage.jsx";
 
@@ -100,7 +101,7 @@ export default function ProductPanel({
 }) {
   return (
     <section className="product-panel" aria-label="Products">
-      {status === "loading" ? <p className="message">Loading products…</p> : null}
+      {status === "loading" ? <LoadingState label="Loading products…" /> : null}
       {status === "error" ? <p className="message error">{error}</p> : null}
       {status === "ready" ? (
         <>

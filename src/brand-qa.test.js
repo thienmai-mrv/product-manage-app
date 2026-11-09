@@ -8,6 +8,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { createServer as createViteServer } from "vite";
 import { createApp } from "./app.js";
+import { createUserinfo } from "./store.js";
 import worker from "./worker.js";
 
 /**
@@ -174,10 +175,91 @@ let Products;
 let Dashboard;
 
 const TEST_URI = "mongodb://127.0.0.1:27017/productmanage";
+const SESSION_FIXTURE = "qa-session-secret-0123456789abcdef";
 const workerEnv = { MONGODB_URI: TEST_URI, MONGODB_DB: "productmanage" };
+const nativeFetch = globalThis.fetch;
+let adminCookieHeader = "";
 
+/**
+ * True for catalog writes that must carry the admin cookie.
+ *
+ * @param pathname Request path
+ * @param method HTTP method
+ * @return True when the helper should attach the session
+ */
+function catalogWrite(pathname, method) {
+  const verb = String(method || "GET").toUpperCase();
+  if (verb !== "POST" && verb !== "PUT" && verb !== "DELETE") {
+    return false;
+  }
+  return /^\/api\/(products|brands|categories)(?:\/|$)/.test(pathname);
+}
+
+/**
+ * Copy headers and attach the admin cookie unless the call opts out.
+ *
+ * @param pathname Request path
+ * @param method HTTP method
+ * @param headers Existing headers
+ * @return Headers for the outgoing call
+ */
+function withAdminCookie(pathname, method, headers) {
+  const next = new Headers(headers || {});
+  const anonymous = next.get("x-test-anonymous") === "1";
+  next.delete("x-test-anonymous");
+  if (adminCookieHeader && !anonymous && catalogWrite(pathname, method) && !next.has("cookie")) {
+    next.set("cookie", adminCookieHeader);
+  }
+  return next;
+}
+
+/**
+ * Send a request to the Cloudflare Worker and return the Response.
+ *
+ * @param pathname URL path
+ * @param init Fetch init
+ * @param envOverride Optional Worker env override
+ * @return Worker Response
+ */
 function callWorker(pathname, init = {}, envOverride = workerEnv) {
-  return worker.fetch(new Request(`http://worker.local${pathname}`, init), envOverride);
+  const headers = withAdminCookie(pathname, init.method, init.headers);
+  return worker.fetch(new Request(`http://worker.local${pathname}`, { ...init, headers }), envOverride);
+}
+
+/**
+ * Create the known admin when missing and store the session cookie.
+ *
+ * @return Cookie request header
+ */
+async function loginAdmin() {
+  const env = {
+    MONGODB_URI: TEST_URI,
+    MONGODB_DB: "productmanage",
+    SESSION_SECRET: SESSION_FIXTURE,
+  };
+  const existing = memoryDb.dump("userinfo").find((doc) => doc.username === "ada");
+  if (!existing) {
+    await createUserinfo(env, {
+      username: "ada",
+      email: "ada@example.com",
+      password: "password123",
+    });
+  }
+  const response = await nativeFetch(`${expressBaseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "ada", password: "password123" }),
+  });
+  const body = await response.json();
+  assert.equal(response.status, 200, body.error || "login failed");
+  const cookies = typeof response.headers.getSetCookie === "function" ? response.headers.getSetCookie() : [];
+  const setCookie = cookies.find((value) => value.toLowerCase().startsWith("admin_session="))
+    || response.headers.get("set-cookie")
+    || "";
+  const match = /admin_session=([^;]+)/.exec(setCookie);
+  assert.ok(match);
+  adminCookieHeader = `admin_session=${match[1]}`;
+  return adminCookieHeader;
 }
 
 /**
@@ -338,13 +420,31 @@ before(async () => {
   ({ default: Brands } = await vite.ssrLoadModule("/src/components/Brands.jsx"));
   ({ default: Products } = await vite.ssrLoadModule("/src/components/Products.jsx"));
   ({ default: Dashboard } = await vite.ssrLoadModule("/src/components/Dashboard.jsx"));
+
+  globalThis.fetch = async (input, init = {}) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input?.url || "";
+    let pathname = url;
+    try {
+      pathname = new URL(url, "http://127.0.0.1").pathname;
+    } catch {
+      pathname = url;
+    }
+    const method = init.method || "GET";
+    const headers = withAdminCookie(pathname, method, init.headers);
+    return nativeFetch(input, { ...init, headers });
+  };
 });
 
 after(async () => {
   MongoClient.prototype.connect = originalConnect;
   MongoClient.prototype.db = originalDb;
   MongoClient.prototype.close = originalClose;
+  globalThis.fetch = nativeFetch;
   delete process.env.MONGODB_URI;
+  delete process.env.SESSION_SECRET;
+  delete process.env.AUTH_BOOTSTRAP_USERNAME;
+  delete process.env.AUTH_BOOTSTRAP_EMAIL;
+  delete process.env.AUTH_BOOTSTRAP_PASSWORD;
   if (expressServer) {
     await new Promise((resolve) => expressServer.close(resolve));
   }
@@ -355,7 +455,16 @@ after(async () => {
 
 beforeEach(() => {
   memoryDb.reset();
+  adminCookieHeader = "";
   process.env.MONGODB_URI = TEST_URI;
+  process.env.SESSION_SECRET = SESSION_FIXTURE;
+  delete process.env.AUTH_BOOTSTRAP_USERNAME;
+  delete process.env.AUTH_BOOTSTRAP_EMAIL;
+  delete process.env.AUTH_BOOTSTRAP_PASSWORD;
+  workerEnv.SESSION_SECRET = SESSION_FIXTURE;
+  delete workerEnv.AUTH_BOOTSTRAP_USERNAME;
+  delete workerEnv.AUTH_BOOTSTRAP_EMAIL;
+  delete workerEnv.AUTH_BOOTSTRAP_PASSWORD;
 });
 
 test("brand-management API parity: empty name 400, duplicate rename 409, missing update/delete 404, productCount on update, and brand seeding on existing catalog", async () => {
@@ -395,6 +504,7 @@ test("brand-management API parity: empty name 400, duplicate rename 409, missing
   assert.equal(prodBody.items.length, 1);
   assert.equal(prodBody.items[0].id, "prod-existing");
   assert.equal(prodBody.items[0].brandName, "Samsung");
+  await loginAdmin();
 
   // 2. Reject missing/whitespace brand name on POST (Express & Worker)
   for (const name of ["", "   "]) {
@@ -513,16 +623,16 @@ test("Brands administrative UI (/brands): navigation order, page title and heade
   };
 
   try {
+    await loginAdmin();
     // 1. Check nav order, page width, and title/header in App at /brands
     const appHtml = renderToStaticMarkup(
       React.createElement(MemoryRouter, { initialEntries: ["/brands"] }, React.createElement(App)),
     );
-    assert.ok(appHtml.includes('<main class="page page-wide">'));
+    assert.ok(appHtml.includes('<main class="page page-wide page-admin">'));
     assert.ok(appHtml.includes("<h1>Brands</h1>"));
 
     const navMatches = [...appHtml.matchAll(/<a [^>]*class="nav-link(?: active)?"[^>]*>([^<]+)<\/a>/g)];
-    assert.deepEqual(navMatches.map((m) => m[1]), ["Dashboard", "Products", "Brands", "Categories"]);
-    assert.match(navMatches[2][0], /nav-link active/);
+    assert.deepEqual(navMatches.map((m) => m[1]), ["Dashboard"]);
 
     // 2. Mount Brands component interactively
     const view = mountInteractive(Brands);
@@ -616,6 +726,7 @@ test("product-management brand validation on PUT, Brand column order, Brand sele
   };
 
   try {
+    await loginAdmin();
     // Seed catalog
     await origFetch(`${expressBaseUrl}/api/products`);
 
@@ -756,6 +867,7 @@ test("product-dashboard: GET / 302 redirect, menu order, Brands section before C
   };
 
   try {
+    await loginAdmin();
     // 1. Root URL redirects to /dashboard with HTTP 302 on Express (when static index does not intercept) and Worker
     const distIndex = path.join("web", "dist", "index.html");
     const distBackup = path.join("web", "dist", "index.html.bak");
@@ -784,7 +896,9 @@ test("product-dashboard: GET / 302 redirect, menu order, Brands section before C
     assert.equal(new URL(wrkRoot.headers.get("location")).pathname, "/dashboard");
 
     // Verify Worker serves /brands via ASSETS binding
-    const wrkBrandsPage = await callWorker("/brands", {}, {
+    const wrkBrandsPage = await callWorker("/brands", {
+      headers: { cookie: adminCookieHeader },
+    }, {
       ...workerEnv,
       ASSETS: {
         async fetch(req) {
@@ -805,7 +919,7 @@ test("product-dashboard: GET / 302 redirect, menu order, Brands section before C
     assert.ok(dashAppHtml.includes('<main class="page page-dashboard">'));
     assert.ok(!dashAppHtml.includes("<h1>"));
     const navLinks = [...dashAppHtml.matchAll(/<a [^>]*class="nav-link(?: active)?"[^>]*>([^<]+)<\/a>/g)];
-    assert.deepEqual(navLinks.map((m) => m[1]), ["Dashboard", "Products", "Brands", "Categories"]);
+    assert.deepEqual(navLinks.map((m) => m[1]), ["Dashboard"]);
     assert.match(navLinks[0][0], /nav-link active/);
 
     // 3. Mount Dashboard and verify parallel fetch, section order, and initial catalog

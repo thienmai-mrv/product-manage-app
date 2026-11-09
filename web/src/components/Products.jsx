@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { requestJson } from "../api.js";
 import { displayImageSrc } from "../productImage.js";
 import ActionIcon from "./ActionIcon.jsx";
+import LoadingState from "./LoadingState.jsx";
 import ProductImage from "./ProductImage.jsx";
 
 const MAX_IMAGE_BYTES = 1048576;
@@ -450,7 +451,7 @@ export default function Products() {
         </button>
       </div>
       {form && (
-        <form className="config-form" onSubmit={saveForm}>
+        <form className="config-form product-form" onSubmit={saveForm}>
           <label>
             Name
             <input value={form.name} onChange={(event) => updateForm("name", event.target.value)} />
@@ -547,6 +548,8 @@ export default function Products() {
           </div>
         </form>
       )}
+      {!loaded && !error ? <LoadingState label="Loading products…" /> : null}
+      {loaded || error ? (
       <div className="table-wrap">
         <table className="config-table product-table">
           <thead>
@@ -587,8 +590,16 @@ export default function Products() {
                     {item.description}
                   </span>
                 </td>
-                <td className="col-status">{item.published === false ? "Unpublished" : "Published"}</td>
-                <td className="col-stock">{item.inStock === false ? "Out of Stock" : "In Stock"}</td>
+                <td className="col-status">
+                  <span className={item.published === false ? "status-pill status-off" : "status-pill status-on"}>
+                    {item.published === false ? "Unpublished" : "Published"}
+                  </span>
+                </td>
+                <td className="col-stock">
+                  <span className={item.inStock === false ? "status-pill status-off" : "status-pill status-on"}>
+                    {item.inStock === false ? "Out of Stock" : "In Stock"}
+                  </span>
+                </td>
                 <td className="col-action">
                   <div className="row-actions">
                     <button
@@ -644,6 +655,7 @@ export default function Products() {
           </tbody>
         </table>
       </div>
+      ) : null}
     </>
   );
 }

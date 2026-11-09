@@ -38,7 +38,8 @@ export function loadLocalEnv() {
 }
 
 /**
- * Read the Mongo settings used by the local Express server.
+ * Read the Mongo and auth settings used by the local Express server.
+ * Secret values stay empty when the process environment does not set them.
  *
  * @return Worker-shaped environment
  */
@@ -46,5 +47,9 @@ export function localEnv() {
   return {
     MONGODB_URI: process.env.MONGODB_URI || "",
     MONGODB_DB: process.env.MONGODB_DB || "productmanage",
+    SESSION_SECRET: process.env.SESSION_SECRET || "",
+    AUTH_BOOTSTRAP_USERNAME: process.env.AUTH_BOOTSTRAP_USERNAME || "",
+    AUTH_BOOTSTRAP_EMAIL: process.env.AUTH_BOOTSTRAP_EMAIL || "",
+    AUTH_BOOTSTRAP_PASSWORD: process.env.AUTH_BOOTSTRAP_PASSWORD || "",
   };
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { requestJson } from "../api.js";
 import ActionIcon from "./ActionIcon.jsx";
+import LoadingState from "./LoadingState.jsx";
 
 const emptyForm = { mode: "add", id: "", name: "", description: "" };
 
@@ -164,6 +165,8 @@ export default function Categories() {
           </div>
         </form>
       )}
+      {!loaded && !error ? <LoadingState label="Loading categories…" /> : null}
+      {loaded || error ? (
       <div className="table-wrap">
         <table className="config-table category-table">
           <thead>
@@ -221,6 +224,7 @@ export default function Categories() {
           </tbody>
         </table>
       </div>
+      ) : null}
     </>
   );
 }

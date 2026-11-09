@@ -1,6 +1,6 @@
 # product-manage-app
 
-Sample product catalog with a React frontend and an Express backend. Express serves the JSON API and the Dashboard, Product, and Category pages. The same API runs on a Cloudflare Worker for deployment. The admin page layout follows the json-config-server admin UI.
+Sample product catalog with a React frontend and an Express backend. Express serves the JSON API and the Dashboard, Login, Product, Brand, and Category pages. The same API runs on a Cloudflare Worker for deployment. Signed-in admin pages use a sidebar shell. The storefront dashboard stays a separate public page.
 
 Products and categories are stored in MongoDB. `MONGODB_URI` is an environment secret and is never written into `wrangler.toml`.
 
@@ -14,6 +14,8 @@ npm run dev
 ```
 
 Open http://localhost:3000. `/` redirects to `/dashboard`. The first API call creates the sample categories and products when both collections are empty.
+
+A signed-out visitor sees Dashboard and Login. Products, Brands, and Categories appear in the navigation only after the session check confirms an admin. `/login` is a centered card. Products, Brands, and Categories use a dark sidebar with Logout at the bottom, and a content column with the page title and table. Below 960px that sidebar becomes a top bar. While a page is waiting on data, it shows the shared spinner: `Loading products…` on the dashboard, `Loading brands…` and `Loading categories…` on those lists, and `Loading…` while the session check is still in progress.
 
 `npm start` builds the React app and serves `web/dist` without the Vite dev server. It reads the same `.env` file.
 
@@ -56,10 +58,14 @@ Features are delivered by specialized agents orchestrated by Orca Desktop, speci
 | Method | Path | Body |
 |---|---|---|
 | GET | `/` | Redirects to `/dashboard`. |
-| GET | `/dashboard` | React dashboard page. |
-| GET | `/products` | React product page. |
-| GET | `/brands` | React brand page. |
-| GET | `/categories` | React category page. |
+| GET | `/dashboard` | Public storefront. Spinner plus `Loading products…` until the catalog request finishes. |
+| GET | `/login` | Centered login card. Spinner plus `Loading…` until the session check finishes. An active session redirects to `/products`. |
+| GET | `/products` | Admin product page in the sidebar shell. Requires the admin cookie. Spinner plus `Loading products…` until the list loads. |
+| GET | `/brands` | Admin brand page in the sidebar shell. Requires the admin cookie. Spinner plus `Loading brands…` until the list loads. |
+| GET | `/categories` | Admin category page in the sidebar shell. Requires the admin cookie. Spinner plus `Loading categories…` until the list loads. |
+| POST | `/api/auth/login` | `{ "username", "password" }`, `{ "email", "password" }`, or `{ "account", "password" }`. Returns `{ "user" }` and sets the admin cookie. |
+| GET | `/api/auth/session` | Returns `{ "authenticated": true, "user" }` or `{ "authenticated": false }`. |
+| POST | `/api/auth/logout` | Clears the admin cookie and returns `{ "ok": true }`. |
 | GET | `/api/products` | Lists products. |
 | POST | `/api/products` | `{ "name", "sku", "price", "brandId", "categoryId", "description", "imageUrl", "quantity" }` with optional `published` and optional `imageFile`. |
 | PUT | `/api/products/<id>` | Same fields as create, including `brandId`, optional `published`, and optional `imageFile`. |
@@ -73,3 +79,5 @@ Features are delivered by specialized agents orchestrated by Orca Desktop, speci
 | POST | `/api/brands` | `{ "name", "description" }`. |
 | PUT | `/api/brands/<id>` | Same fields as create. |
 | DELETE | `/api/brands/<id>` | Deletes a brand that has no products. |
+
+Catalog `POST`, `PUT`, and `DELETE` require the admin cookie. Catalog `GET` stays public so the Dashboard can load without a session.

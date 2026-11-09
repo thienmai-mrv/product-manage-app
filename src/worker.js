@@ -1,5 +1,17 @@
+import { clientErrorMessage } from "./httpErrors.js";
+import { parseLoginBody } from "./loginInput.js";
 import { MAX_JSON_BODY_BYTES } from "./productInput.js";
-import { addBrand, addCategory, addProduct, deleteBrand, deleteCategory, deleteProduct, getProductImage, listBrands, listCategories, listProducts, updateBrand, updateCategory, updateProduct } from "./store.js";
+import { resolveAdmin } from "./requireAdmin.js";
+import {
+  pageSessionUserId,
+  readCookie,
+  requestIsSecure,
+  requireSessionSecret,
+  sessionCookieHeader,
+  signSession,
+  verifySession,
+} from "./session.js";
+import { addBrand, addCategory, addProduct, authenticate, deleteBrand, deleteCategory, deleteProduct, findUserById, getProductImage, listBrands, listCategories, listProducts, updateBrand, updateCategory, updateProduct } from "./store.js";
 
 /**
  * Build a JSON response.
@@ -8,10 +20,10 @@ import { addBrand, addCategory, addProduct, deleteBrand, deleteCategory, deleteP
  * @param status HTTP status code
  * @return JSON response
  */
-function json(body, status = 200) {
+function json(body, status = 200, extraHeaders = {}) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json; charset=utf-8" },
+    headers: { "Content-Type": "application/json; charset=utf-8", ...extraHeaders },
   });
 }
 
@@ -48,17 +60,59 @@ async function readJson(request) {
 
 /**
  * Turn a thrown error into a JSON error response.
- * A 500 hides the raw message, except a missing Mongo URI.
+ * A 500 hides the raw message, except the shared configuration sentences.
  *
  * @param error Caught error
  * @return JSON error response
  */
 function errorResponse(error) {
   const status = error.status || 500;
-  const message = status === 500 && error.message !== "MONGODB_URI is not set"
-    ? "Request failed"
-    : error.message;
+  const message = clientErrorMessage(status, error.message);
   return json({ error: message }, status);
+}
+
+const ADMIN_PAGES = new Set(["/products", "/brands", "/categories"]);
+
+/**
+ * Handle login, session, and logout.
+ * Any other method on those three paths is HTTP 405. Unrelated paths return null.
+ *
+ * @param request Incoming request
+ * @param env Worker environment
+ * @param url Parsed request URL
+ * @return JSON response, or null when the path is not an auth route
+ */
+async function handleAuth(request, env, url) {
+  const { pathname } = url;
+  if (pathname !== "/api/auth/login" && pathname !== "/api/auth/session" && pathname !== "/api/auth/logout") {
+    return null;
+  }
+  const secure = requestIsSecure(url, request.headers.get("x-forwarded-proto"));
+  if (pathname === "/api/auth/login" && request.method === "POST") {
+    const secret = requireSessionSecret(env);
+    const user = await authenticate(env, parseLoginBody(await readJson(request)));
+    const token = signSession(user.id, secret);
+    return json({ user }, 200, { "Set-Cookie": sessionCookieHeader(token, { secure }) });
+  }
+  if (pathname === "/api/auth/session" && request.method === "GET") {
+    const secret = requireSessionSecret(env);
+    const token = readCookie(request.headers.get("cookie"));
+    const userId = token ? verifySession(token, secret) : null;
+    if (!userId) {
+      return json({ authenticated: false });
+    }
+    const user = await findUserById(env, userId);
+    if (!user) {
+      return json({ authenticated: false });
+    }
+    return json({ authenticated: true, user });
+  }
+  if (pathname === "/api/auth/logout" && request.method === "POST") {
+    return json({ ok: true }, 200, {
+      "Set-Cookie": sessionCookieHeader("", { secure, clear: true }),
+    });
+  }
+  return json({ error: "Method not allowed" }, 405);
 }
 
 /**
@@ -70,6 +124,11 @@ function errorResponse(error) {
  * @return JSON response
  */
 async function handleApi(request, env, url) {
+  const authResponse = await handleAuth(request, env, url);
+  if (authResponse) {
+    return authResponse;
+  }
+
   const imageMatch = url.pathname.match(/^\/api\/products\/([^/]+)\/image$/);
   if (imageMatch) {
     if (request.method !== "GET") {
@@ -94,12 +153,15 @@ async function handleApi(request, env, url) {
       return json({ items: await listProducts(env) });
     }
     if (request.method === "POST" && !id) {
+      await resolveAdmin(request.headers.get("cookie"), env);
       return json({ item: await addProduct(env, await readJson(request)) }, 201);
     }
     if (request.method === "PUT" && id) {
+      await resolveAdmin(request.headers.get("cookie"), env);
       return json({ item: await updateProduct(env, id, await readJson(request)) });
     }
     if (request.method === "DELETE" && id) {
+      await resolveAdmin(request.headers.get("cookie"), env);
       return json(await deleteProduct(env, id));
     }
     return json({ error: "Method not allowed" }, 405);
@@ -112,12 +174,15 @@ async function handleApi(request, env, url) {
       return json({ items: await listCategories(env) });
     }
     if (request.method === "POST" && !id) {
+      await resolveAdmin(request.headers.get("cookie"), env);
       return json({ item: await addCategory(env, await readJson(request)) }, 201);
     }
     if (request.method === "PUT" && id) {
+      await resolveAdmin(request.headers.get("cookie"), env);
       return json({ item: await updateCategory(env, id, await readJson(request)) });
     }
     if (request.method === "DELETE" && id) {
+      await resolveAdmin(request.headers.get("cookie"), env);
       return json(await deleteCategory(env, id));
     }
     return json({ error: "Method not allowed" }, 405);
@@ -130,12 +195,15 @@ async function handleApi(request, env, url) {
       return json({ items: await listBrands(env) });
     }
     if (request.method === "POST" && !id) {
+      await resolveAdmin(request.headers.get("cookie"), env);
       return json({ item: await addBrand(env, await readJson(request)) }, 201);
     }
     if (request.method === "PUT" && id) {
+      await resolveAdmin(request.headers.get("cookie"), env);
       return json({ item: await updateBrand(env, id, await readJson(request)) });
     }
     if (request.method === "DELETE" && id) {
+      await resolveAdmin(request.headers.get("cookie"), env);
       return json(await deleteBrand(env, id));
     }
     return json({ error: "Method not allowed" }, 405);
@@ -167,6 +235,16 @@ async function route(request, env) {
 
   if (url.pathname === "/" && request.method === "GET") {
     return Response.redirect(new URL("/dashboard", url), 302);
+  }
+
+  if (request.method === "GET" && (ADMIN_PAGES.has(url.pathname) || url.pathname === "/login")) {
+    const userId = pageSessionUserId(request.headers.get("cookie"), env);
+    if (ADMIN_PAGES.has(url.pathname) && !userId) {
+      return Response.redirect(new URL("/login", url), 302);
+    }
+    if (url.pathname === "/login" && userId) {
+      return Response.redirect(new URL("/products", url), 302);
+    }
   }
 
   if (!env.ASSETS?.fetch) {
