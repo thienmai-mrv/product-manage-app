@@ -7,3 +7,4 @@ Append one row per decision. When a gate is decided more than once, the last row
 | Gate | After stage | Decision | Approved by | Date | Notes |
 |---|---|---|---|---|---|
 | G1 | analyst | approved | Thien Mai | 2026-11-09 | Requirements approved. Seven open questions in proposal.md stay unresolved for the architect to decide in the technical plan. |
+| G2 | architect | approved | Thien Mai | 2026-11-09 | Technical plan approved: hashed userinfo bootstrap, username or email login, 8-hour HMAC HttpOnly cookie, nav Login/Logout, public Dashboard, and no account-management page or user API. |
