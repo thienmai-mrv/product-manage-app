@@ -3,3 +3,9 @@
 # MONGODB_URI is encrypted there, so paste that value below.
 MONGODB_URI=mongodb+srv://USER:PASSWORD@CLUSTER.mongodb.net/?retryWrites=true&w=majority
 MONGODB_DB=productmanage
+# SESSION_SECRET must be at least 32 characters.
+# Set AUTH_BOOTSTRAP_USERNAME, AUTH_BOOTSTRAP_EMAIL, and AUTH_BOOTSTRAP_PASSWORD together for the first admin.
+SESSION_SECRET=
+AUTH_BOOTSTRAP_USERNAME=
+AUTH_BOOTSTRAP_EMAIL=
+AUTH_BOOTSTRAP_PASSWORD=

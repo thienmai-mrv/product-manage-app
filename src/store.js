@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Binary, MongoClient } from "mongodb";
+import { isValidEmail, isValidUsername } from "./loginInput.js";
+import { hashPassword, verifyPassword } from "./password.js";
 import { parseInStock, parsePublished, resolveProductImage } from "./productInput.js";
 
 const nameCollation = { locale: "en", strength: 2 };
@@ -51,6 +53,7 @@ async function withDatabase(env, fn) {
     const db = client.db(databaseName(env));
     await ensureIndexes(db);
     await ensureSeed(db);
+    await ensureAdminBootstrap(db, env);
     return await fn(db);
   } finally {
     await client.close(true);
@@ -58,8 +61,8 @@ async function withDatabase(env, fn) {
 }
 
 /**
- * Create the category and brand name indexes once in this isolate.
- * The ready flag is set only after both indexes succeed, so a failed brand index is retried.
+ * Create the category, brand, and userinfo indexes once in this isolate.
+ * The ready flag is set only after every index succeeds, so a failed createIndex is retried.
  *
  * @param db Mongo database
  */
@@ -75,7 +78,92 @@ async function ensureIndexes(db) {
     { name: 1 },
     { unique: true, collation: nameCollation, name: "brand_name_ci" },
   );
+  await db.collection("userinfo").createIndex(
+    { username: 1 },
+    { unique: true, collation: nameCollation, name: "userinfo_username_ci" },
+  );
+  await db.collection("userinfo").createIndex(
+    { email: 1 },
+    { unique: true, collation: nameCollation, name: "userinfo_email_ci" },
+  );
   indexesReady = true;
+}
+
+/**
+ * Read one trimmed bootstrap value. Non-strings count as empty.
+ *
+ * @param env Worker or local environment
+ * @param key Environment name
+ * @return Trimmed text
+ */
+function bootstrapValue(env, key) {
+  const value = env?.[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+/**
+ * Classify the bootstrap trio.
+ * Empty means insert nothing. Partial means do not insert, and login fails closed while userinfo is empty.
+ *
+ * @param env Worker or local environment
+ * @return Bootstrap status and the valid values
+ */
+function bootstrapStatus(env) {
+  const username = bootstrapValue(env, "AUTH_BOOTSTRAP_USERNAME");
+  const email = bootstrapValue(env, "AUTH_BOOTSTRAP_EMAIL");
+  const password = bootstrapValue(env, "AUTH_BOOTSTRAP_PASSWORD");
+  if (!username && !email && !password) {
+    return { status: "empty" };
+  }
+  if (isValidUsername(username) && isValidEmail(email) && password.length >= 8) {
+    return { status: "valid", username, email, password };
+  }
+  return { status: "partial" };
+}
+
+let invalidUserHash;
+
+/**
+ * Cached hash of a fixed string so an unknown account still pays for one PBKDF2.
+ *
+ * @return Stored pad hash
+ */
+async function invalidUserPadHash() {
+  if (!invalidUserHash) {
+    invalidUserHash = await hashPassword("invalid-user-timing-pad");
+  }
+  return invalidUserHash;
+}
+
+/**
+ * Insert the first admin when the bootstrap trio is valid and userinfo is empty.
+ * A duplicate key from a concurrent insert is ignored. The password is never logged.
+ *
+ * @param db Mongo database
+ * @param env Worker or local environment
+ */
+async function ensureAdminBootstrap(db, env) {
+  const status = bootstrapStatus(env);
+  if (status.status !== "valid") {
+    return;
+  }
+  const users = db.collection("userinfo");
+  if (await users.countDocuments() > 0) {
+    return;
+  }
+  try {
+    await users.insertOne({
+      _id: randomUUID(),
+      username: status.username,
+      email: status.email,
+      passwordHash: await hashPassword(status.password),
+      createdAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    if (error?.code !== 11000) {
+      throw error;
+    }
+  }
 }
 
 const sampleBrands = [
@@ -842,6 +930,95 @@ export function deleteProduct(env, id) {
  * @param id Product id
  * @return Content type and a copy of the stored bytes
  */
+/**
+ * Map a userinfo document to the public session shape.
+ * Password material is omitted.
+ *
+ * @param doc userinfo document
+ * @return Public user
+ */
+export function toPublicUser(doc) {
+  return {
+    id: doc._id,
+    username: doc.username,
+    email: doc.email,
+  };
+}
+
+/**
+ * Insert one administrator account.
+ * A colliding username or email is HTTP 409. This function is not mounted on an HTTP route.
+ *
+ * @param env Worker or local environment
+ * @param input Username, email, and plaintext password
+ * @return Public user
+ */
+export function createUserinfo(env, input) {
+  return withDatabase(env, async (db) => {
+    const users = db.collection("userinfo");
+    const username = String(input?.username ?? "").trim();
+    const email = String(input?.email ?? "").trim();
+    const existingName = await users.findOne({ username }, { collation: nameCollation });
+    const existingEmail = await users.findOne({ email }, { collation: nameCollation });
+    if (existingName || existingEmail) {
+      throw httpError(409, "A user with that username or email already exists");
+    }
+    const doc = {
+      _id: randomUUID(),
+      username,
+      email,
+      passwordHash: await hashPassword(input?.password),
+      createdAt: new Date().toISOString(),
+    };
+    try {
+      await users.insertOne(doc);
+    } catch (error) {
+      rethrowDuplicate(error, "A user with that username or email already exists");
+    }
+    return toPublicUser(doc);
+  });
+}
+
+/**
+ * Load one account by id.
+ *
+ * @param env Worker or local environment
+ * @param id userinfo id
+ * @return Public user, or null when the row is gone
+ */
+export function findUserById(env, id) {
+  return withDatabase(env, async (db) => {
+    const doc = await db.collection("userinfo").findOne({ _id: id });
+    return doc ? toPublicUser(doc) : null;
+  });
+}
+
+/**
+ * Check a username or email and password.
+ * Unknown accounts and wrong passwords share one HTTP 401. A partial bootstrap on an empty collection is HTTP 500.
+ *
+ * @param env Worker or local environment
+ * @param parsed `lookup` of `username` or `email`, plus `value` and `password`
+ * @return Public user
+ */
+export function authenticate(env, parsed) {
+  return withDatabase(env, async (db) => {
+    const users = db.collection("userinfo");
+    const count = await users.countDocuments();
+    if (count === 0 && bootstrapStatus(env).status === "partial") {
+      throw httpError(500, "Admin bootstrap configuration is incomplete");
+    }
+    const field = parsed?.lookup === "email" ? "email" : "username";
+    const doc = await users.findOne({ [field]: parsed?.value }, { collation: nameCollation });
+    const stored = doc?.passwordHash ?? await invalidUserPadHash();
+    const matches = await verifyPassword(parsed?.password, stored);
+    if (!doc || !matches) {
+      throw httpError(401, "Invalid username, email, or password");
+    }
+    return toPublicUser(doc);
+  });
+}
+
 export function getProductImage(env, id) {
   return withDatabase(env, async (db) => {
     const doc = await db.collection("productImages").findOne({ _id: id });

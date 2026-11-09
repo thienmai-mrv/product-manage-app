@@ -2,13 +2,18 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
+import { localEnv } from "./env.js";
+import { clientErrorMessage } from "./httpErrors.js";
+import authRoutes from "./routes/auth.js";
 import brandRoutes from "./routes/brands.js";
 import categoryRoutes from "./routes/categories.js";
 import productRoutes from "./routes/products.js";
+import { pageSessionUserId } from "./session.js";
 
 const rootDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const webDir = path.join(rootDir, "web");
-const pagePaths = ["/dashboard", "/products", "/brands", "/categories"];
+const adminPagePaths = ["/products", "/brands", "/categories"];
+const pagePaths = ["/dashboard", "/login", ...adminPagePaths];
 
 /**
  * Turn a thrown store error into a JSON response.
@@ -32,9 +37,7 @@ function apiError(error, req, res, next) {
     return;
   }
   const status = error.status || 500;
-  const message = status === 500 && error.message !== "MONGODB_URI is not set"
-    ? "Request failed"
-    : error.message;
+  const message = clientErrorMessage(status, error.message);
   res.status(status).json({ error: message });
 }
 
@@ -62,6 +65,29 @@ function sendPage(vite) {
 }
 
 /**
+ * Redirect admin documents and an authenticated login page before HTML is sent.
+ * A missing or short secret takes the logged-out branch. Dashboard stays public.
+ *
+ * @param vite Vite dev server, or null in production
+ * @return Express handler
+ */
+function sendGuardedPage(vite) {
+  const render = sendPage(vite);
+  return (req, res, next) => {
+    const userId = pageSessionUserId(req.headers.cookie, localEnv());
+    if (adminPagePaths.includes(req.path) && !userId) {
+      res.redirect(302, "/login");
+      return;
+    }
+    if (req.path === "/login" && userId) {
+      res.redirect(302, "/products");
+      return;
+    }
+    return render(req, res, next);
+  };
+}
+
+/**
  * Build the Express app.
  * Express serves the API and the Dashboard, Product, Brand, and Category page routes.
  *
@@ -72,6 +98,7 @@ export async function createApp({ dev = false } = {}) {
   const app = express();
   app.use(express.json({ limit: "2mb" }));
 
+  app.use("/api/auth", authRoutes);
   app.use("/api/categories", categoryRoutes);
   app.use("/api/brands", brandRoutes);
   app.use("/api/products", productRoutes);
@@ -97,7 +124,7 @@ export async function createApp({ dev = false } = {}) {
   app.get("/", (req, res) => {
     res.redirect("/dashboard");
   });
-  app.get(pagePaths, sendPage(vite));
+  app.get(pagePaths, sendGuardedPage(vite));
 
   return app;
 }

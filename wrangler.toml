@@ -34,7 +34,7 @@ directory = "./web/dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
 # The React pages are static files. API routes and the home redirect run in the Worker.
-run_worker_first = ["/", "/api", "/api/*"]
+run_worker_first = ["/", "/api", "/api/*", "/login", "/products", "/brands", "/categories"]
 
 
 [observability.logs]

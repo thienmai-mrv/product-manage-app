@@ -5,6 +5,8 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createServer as createViteServer } from "vite";
 import { createApp } from "./app.js";
+import { signSession } from "./session.js";
+import { authenticate, createUserinfo, listCategories } from "./store.js";
 import worker from "./worker.js";
 
 const PNG_BYTES = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -52,8 +54,8 @@ function createMemoryDatabase() {
         }
         continue;
       }
-      if (key === "name" && options?.collation?.strength === 2) {
-        if (String(doc.name ?? "").toLowerCase() !== String(condition ?? "").toLowerCase()) {
+      if ((key === "name" || key === "username" || key === "email") && options?.collation?.strength === 2) {
+        if (String(doc[key] ?? "").toLowerCase() !== String(condition ?? "").toLowerCase()) {
           return false;
         }
         continue;
@@ -187,7 +189,43 @@ let viewCatalog;
 let createFilterState;
 
 const TEST_URI = "mongodb://127.0.0.1:27017/productmanage";
+const SESSION_FIXTURE = "qa-session-secret-0123456789abcdef";
 const workerEnv = { MONGODB_URI: TEST_URI, MONGODB_DB: "productmanage" };
+const nativeFetch = globalThis.fetch;
+let adminCookieHeader = "";
+
+/**
+ * True for catalog writes that must carry the admin cookie.
+ *
+ * @param pathname Request path
+ * @param method HTTP method
+ * @return True when the helper should attach the session
+ */
+function catalogWrite(pathname, method) {
+  const verb = String(method || "GET").toUpperCase();
+  if (verb !== "POST" && verb !== "PUT" && verb !== "DELETE") {
+    return false;
+  }
+  return /^\/api\/(products|brands|categories)(?:\/|$)/.test(pathname);
+}
+
+/**
+ * Copy headers and attach the admin cookie unless the call opts out.
+ *
+ * @param pathname Request path
+ * @param method HTTP method
+ * @param headers Existing headers
+ * @return Headers for the outgoing call
+ */
+function withAdminCookie(pathname, method, headers) {
+  const next = new Headers(headers || {});
+  const anonymous = next.get("x-test-anonymous") === "1";
+  next.delete("x-test-anonymous");
+  if (adminCookieHeader && !anonymous && catalogWrite(pathname, method) && !next.has("cookie")) {
+    next.set("cookie", adminCookieHeader);
+  }
+  return next;
+}
 
 /**
  * Send a request to the Cloudflare Worker and return the Response.
@@ -198,7 +236,67 @@ const workerEnv = { MONGODB_URI: TEST_URI, MONGODB_DB: "productmanage" };
  * @return Worker Response
  */
 function callWorker(pathname, init = {}, envOverride = workerEnv) {
-  return worker.fetch(new Request(`http://worker.local${pathname}`, init), envOverride);
+  const headers = withAdminCookie(pathname, init.method, init.headers);
+  return worker.fetch(new Request(`http://worker.local${pathname}`, { ...init, headers }), envOverride);
+}
+
+/**
+ * Read the admin Set-Cookie header, or an empty string when it was not set.
+ *
+ * @param response Fetch or Worker response
+ * @return Set-Cookie value
+ */
+function sessionCookieValue(response) {
+  const cookies = typeof response.headers.getSetCookie === "function" ? response.headers.getSetCookie() : [];
+  return cookies.find((value) => value.toLowerCase().startsWith("admin_session="))
+    || response.headers.get("set-cookie")
+    || "";
+}
+
+/**
+ * Compare a redirect Location as a path.
+ *
+ * @param response Fetch or Worker response
+ * @return Pathname
+ */
+function locationPath(response) {
+  const location = response.headers.get("location") || "";
+  if (location.startsWith("/")) {
+    return location;
+  }
+  return new URL(location).pathname;
+}
+
+/**
+ * Create the known admin when missing and store the session cookie.
+ *
+ * @return Cookie request header
+ */
+async function loginAdmin() {
+  const env = {
+    MONGODB_URI: TEST_URI,
+    MONGODB_DB: "productmanage",
+    SESSION_SECRET: SESSION_FIXTURE,
+  };
+  const existing = memoryDb.dump("userinfo").find((doc) => doc.username === "ada");
+  if (!existing) {
+    await createUserinfo(env, {
+      username: "ada",
+      email: "ada@example.com",
+      password: "password123",
+    });
+  }
+  const response = await nativeFetch(`${expressBaseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "ada", password: "password123" }),
+  });
+  const body = await response.json();
+  assert.equal(response.status, 200, body.error || "login failed");
+  const match = /admin_session=([^;]+)/.exec(sessionCookieValue(response));
+  assert.ok(match);
+  adminCookieHeader = `admin_session=${match[1]}`;
+  return adminCookieHeader;
 }
 
 /**
@@ -367,13 +465,31 @@ before(async () => {
   ({ default: ProductPanel } = await vite.ssrLoadModule("/src/components/ProductPanel.jsx"));
   ({ default: ProductImage } = await vite.ssrLoadModule("/src/components/ProductImage.jsx"));
   ({ viewCatalog, createFilterState } = await vite.ssrLoadModule("/src/catalogView.js"));
+
+  globalThis.fetch = async (input, init = {}) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input?.url || "";
+    let pathname = url;
+    try {
+      pathname = new URL(url, "http://127.0.0.1").pathname;
+    } catch {
+      pathname = url;
+    }
+    const method = init.method || "GET";
+    const headers = withAdminCookie(pathname, method, init.headers);
+    return nativeFetch(input, { ...init, headers });
+  };
 });
 
 after(async () => {
   MongoClient.prototype.connect = originalConnect;
   MongoClient.prototype.db = originalDb;
   MongoClient.prototype.close = originalClose;
+  globalThis.fetch = nativeFetch;
   delete process.env.MONGODB_URI;
+  delete process.env.SESSION_SECRET;
+  delete process.env.AUTH_BOOTSTRAP_USERNAME;
+  delete process.env.AUTH_BOOTSTRAP_EMAIL;
+  delete process.env.AUTH_BOOTSTRAP_PASSWORD;
   if (expressServer) {
     await new Promise((resolve) => expressServer.close(resolve));
   }
@@ -382,9 +498,19 @@ after(async () => {
   }
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   memoryDb.reset();
+  adminCookieHeader = "";
   process.env.MONGODB_URI = TEST_URI;
+  process.env.SESSION_SECRET = SESSION_FIXTURE;
+  delete process.env.AUTH_BOOTSTRAP_USERNAME;
+  delete process.env.AUTH_BOOTSTRAP_EMAIL;
+  delete process.env.AUTH_BOOTSTRAP_PASSWORD;
+  workerEnv.SESSION_SECRET = SESSION_FIXTURE;
+  delete workerEnv.AUTH_BOOTSTRAP_USERNAME;
+  delete workerEnv.AUTH_BOOTSTRAP_EMAIL;
+  delete workerEnv.AUTH_BOOTSTRAP_PASSWORD;
+  await loginAdmin();
 });
 
 test("Scenario: Seed starter products on first request & Fetch products from catalog (Express & Worker parity)", async () => {
@@ -1154,5 +1280,277 @@ test("Runtime parity edge cases: 413 body limit, Worker 400 invalid JSON, and 40
   });
   assert.equal(wrk405.status, 405);
   assert.deepEqual(await wrk405.json(), { error: "Method not allowed" });
+});
+
+test("userinfo lookup ignores case, hides passwordHash, and bootstraps one admin", async () => {
+  memoryDb.reset();
+  const env = {
+    MONGODB_URI: TEST_URI,
+    MONGODB_DB: "productmanage",
+    SESSION_SECRET: SESSION_FIXTURE,
+  };
+  const created = await createUserinfo(env, {
+    username: "Ada",
+    email: "Ada@Example.com",
+    password: "password123",
+  });
+  assert.equal(created.passwordHash, undefined);
+  assert.equal(created.username, "Ada");
+  assert.equal(created.email, "Ada@Example.com");
+  const byName = await authenticate(env, { lookup: "username", value: "ada", password: "password123" });
+  assert.equal(byName.id, created.id);
+  assert.equal(byName.passwordHash, undefined);
+  const byEmail = await authenticate(env, { lookup: "email", value: "ada@example.com", password: "password123" });
+  assert.equal(byEmail.email, "Ada@Example.com");
+  await assert.rejects(
+    () => authenticate(env, { lookup: "username", value: "ada", password: "wrong-password" }),
+    (error) => error.status === 401 && error.message === "Invalid username, email, or password",
+  );
+  await assert.rejects(
+    () => createUserinfo(env, { username: "other", email: "ada@example.com", password: "password123" }),
+    (error) => error.status === 409 && error.message === "A user with that username or email already exists",
+  );
+
+  memoryDb.reset();
+  const full = {
+    ...env,
+    AUTH_BOOTSTRAP_USERNAME: "root",
+    AUTH_BOOTSTRAP_EMAIL: "root@localhost",
+    AUTH_BOOTSTRAP_PASSWORD: "password123",
+  };
+  await listCategories(full);
+  assert.equal(memoryDb.dump("userinfo").length, 1);
+  await listCategories(full);
+  assert.equal(memoryDb.dump("userinfo").length, 1);
+
+  memoryDb.reset();
+  const partial = {
+    ...env,
+    AUTH_BOOTSTRAP_USERNAME: "root",
+    AUTH_BOOTSTRAP_EMAIL: "",
+    AUTH_BOOTSTRAP_PASSWORD: "",
+  };
+  await listCategories(partial);
+  assert.equal(memoryDb.dump("userinfo").length, 0);
+  await assert.rejects(
+    () => authenticate(partial, { lookup: "username", value: "root", password: "password123" }),
+    (error) => error.status === 500 && error.message === "Admin bootstrap configuration is incomplete",
+  );
+});
+
+test("auth HTTP contracts and document redirects match on Express and the Worker", async () => {
+  const loginBody = { username: "ada", password: "password123" };
+
+  async function postLogin(body, envOverride) {
+    const expressRes = await nativeFetch(`${expressBaseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const workerRes = await callWorker("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }, envOverride);
+    return { expressRes, workerRes };
+  }
+
+  const byName = await postLogin(loginBody);
+  assert.equal(byName.expressRes.status, 200);
+  const expressUser = await byName.expressRes.json();
+  assert.equal(expressUser.user.username, "ada");
+  assert.equal(expressUser.user.passwordHash, undefined);
+  assert.match(sessionCookieValue(byName.expressRes), /^admin_session=/);
+  assert.equal(sessionCookieValue(byName.expressRes).includes("Secure"), false);
+  assert.equal(byName.workerRes.status, 200);
+  const workerUser = await byName.workerRes.json();
+  assert.equal(workerUser.user.email, "ada@example.com");
+  assert.equal(workerUser.user.passwordHash, undefined);
+  assert.match(sessionCookieValue(byName.workerRes), /^admin_session=/);
+
+  const byEmail = await postLogin({ email: "ADA@example.com", password: "password123" });
+  assert.equal(byEmail.expressRes.status, 200);
+  assert.equal((await byEmail.expressRes.json()).user.username, "ada");
+  assert.match(sessionCookieValue(byEmail.expressRes), /^admin_session=/);
+  assert.equal(byEmail.workerRes.status, 200);
+  assert.match(sessionCookieValue(byEmail.workerRes), /^admin_session=/);
+
+  const wrong = await postLogin({ username: "ada", password: "wrong-password" });
+  assert.equal(wrong.expressRes.status, 401);
+  assert.deepEqual(await wrong.expressRes.json(), { error: "Invalid username, email, or password" });
+  assert.equal(sessionCookieValue(wrong.expressRes), "");
+  assert.equal(wrong.workerRes.status, 401);
+  assert.deepEqual(await wrong.workerRes.json(), { error: "Invalid username, email, or password" });
+  assert.equal(sessionCookieValue(wrong.workerRes), "");
+
+  const unknown = await postLogin({ username: "nobody", password: "password123" });
+  assert.equal(unknown.expressRes.status, 401);
+  assert.equal(sessionCookieValue(unknown.expressRes), "");
+  assert.equal(unknown.workerRes.status, 401);
+  assert.equal(sessionCookieValue(unknown.workerRes), "");
+
+  const blankId = await postLogin({ password: "password123" });
+  assert.equal(blankId.expressRes.status, 400);
+  assert.deepEqual(await blankId.expressRes.json(), { error: "Username or email is required" });
+  assert.equal(blankId.workerRes.status, 400);
+  assert.deepEqual(await blankId.workerRes.json(), { error: "Username or email is required" });
+
+  const blankPassword = await postLogin({ username: "ada", password: "   " });
+  assert.equal(blankPassword.expressRes.status, 400);
+  assert.deepEqual(await blankPassword.expressRes.json(), { error: "Password is required" });
+  assert.equal(blankPassword.workerRes.status, 400);
+  assert.deepEqual(await blankPassword.workerRes.json(), { error: "Password is required" });
+
+  const notObject = await postLogin([]);
+  assert.equal(notObject.expressRes.status, 400);
+  assert.deepEqual(await notObject.expressRes.json(), { error: "Body must be a JSON object" });
+  assert.equal(sessionCookieValue(notObject.expressRes), "");
+  assert.equal(notObject.workerRes.status, 400);
+  assert.deepEqual(await notObject.workerRes.json(), { error: "Body must be a JSON object" });
+  assert.equal(sessionCookieValue(notObject.workerRes), "");
+
+  const expressBadJson = await nativeFetch(`${expressBaseUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{not-json",
+  });
+  assert.equal(expressBadJson.status, 400);
+  assert.equal(typeof (await expressBadJson.json()).error, "string");
+  assert.equal(sessionCookieValue(expressBadJson), "");
+  const workerBadJson = await callWorker("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{not-json",
+  });
+  assert.equal(workerBadJson.status, 400);
+  assert.deepEqual(await workerBadJson.json(), { error: "Body must be JSON" });
+  assert.equal(sessionCookieValue(workerBadJson), "");
+
+  const savedSecret = process.env.SESSION_SECRET;
+  delete process.env.SESSION_SECRET;
+  const noSecretEnv = { ...workerEnv };
+  delete noSecretEnv.SESSION_SECRET;
+  try {
+    const expressMissing = await nativeFetch(`${expressBaseUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(loginBody),
+    });
+    assert.equal(expressMissing.status, 500);
+    assert.deepEqual(await expressMissing.json(), { error: "SESSION_SECRET is not set" });
+    assert.equal(sessionCookieValue(expressMissing), "");
+    const workerMissing = await callWorker("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(loginBody),
+    }, noSecretEnv);
+    assert.equal(workerMissing.status, 500);
+    assert.deepEqual(await workerMissing.json(), { error: "SESSION_SECRET is not set" });
+    assert.equal(sessionCookieValue(workerMissing), "");
+  } finally {
+    process.env.SESSION_SECRET = savedSecret;
+  }
+
+  const anonymous = await nativeFetch(`${expressBaseUrl}/api/auth/session`);
+  assert.equal(anonymous.status, 200);
+  assert.deepEqual(await anonymous.json(), { authenticated: false });
+  const workerAnonymous = await callWorker("/api/auth/session");
+  assert.deepEqual(await workerAnonymous.json(), { authenticated: false });
+  const expressSession = await nativeFetch(`${expressBaseUrl}/api/auth/session`, {
+    headers: { cookie: adminCookieHeader },
+  });
+  const expressSessionBody = await expressSession.json();
+  assert.equal(expressSessionBody.authenticated, true);
+  assert.equal(expressSessionBody.user.passwordHash, undefined);
+  const workerSession = await callWorker("/api/auth/session", { headers: { cookie: adminCookieHeader } });
+  assert.equal((await workerSession.json()).authenticated, true);
+
+  const expired = signSession("missing-user", SESSION_FIXTURE, Date.now() - 28800 * 1000 - 5000);
+  const expiredExpress = await nativeFetch(`${expressBaseUrl}/api/auth/session`, {
+    headers: { cookie: `admin_session=${expired}` },
+  });
+  assert.deepEqual(await expiredExpress.json(), { authenticated: false });
+  const expiredWorker = await callWorker("/api/auth/session", {
+    headers: { cookie: `admin_session=${expired}` },
+  });
+  assert.deepEqual(await expiredWorker.json(), { authenticated: false });
+  const [payload, mac] = adminCookieHeader.slice("admin_session=".length).split(".");
+  const macBytes = Buffer.from(mac, "base64url");
+  macBytes[0] ^= 0xff;
+  const tampered = `admin_session=${payload}.${macBytes.toString("base64url")}`;
+  const tamperedExpress = await nativeFetch(`${expressBaseUrl}/api/auth/session`, {
+    headers: { cookie: tampered },
+  });
+  assert.deepEqual(await tamperedExpress.json(), { authenticated: false });
+  const tamperedWorker = await callWorker("/api/auth/session", { headers: { cookie: tampered } });
+  assert.deepEqual(await tamperedWorker.json(), { authenticated: false });
+
+  for (const cookie of [undefined, adminCookieHeader]) {
+    const headers = cookie ? { cookie } : undefined;
+    const expressLogout = await nativeFetch(`${expressBaseUrl}/api/auth/logout`, { method: "POST", headers });
+    assert.equal(expressLogout.status, 200);
+    assert.deepEqual(await expressLogout.json(), { ok: true });
+    assert.match(sessionCookieValue(expressLogout), /Max-Age=0/);
+    const workerLogout = await callWorker("/api/auth/logout", { method: "POST", headers });
+    assert.equal(workerLogout.status, 200);
+    assert.deepEqual(await workerLogout.json(), { ok: true });
+    assert.match(sessionCookieValue(workerLogout), /Max-Age=0/);
+  }
+
+  const workerMethod = await callWorker("/api/auth/login", { method: "GET" });
+  assert.equal(workerMethod.status, 405);
+  assert.deepEqual(await workerMethod.json(), { error: "Method not allowed" });
+
+  for (const page of ["/products", "/brands", "/categories"]) {
+    const expressPage = await nativeFetch(`${expressBaseUrl}${page}`, { redirect: "manual" });
+    assert.equal(expressPage.status, 302);
+    assert.equal(locationPath(expressPage), "/login");
+    const workerPage = await callWorker(page);
+    assert.equal(workerPage.status, 302);
+    assert.equal(locationPath(workerPage), "/login");
+  }
+  const expressLogin = await nativeFetch(`${expressBaseUrl}/login`, {
+    redirect: "manual",
+    headers: { cookie: adminCookieHeader },
+  });
+  assert.equal(expressLogin.status, 302);
+  assert.equal(locationPath(expressLogin), "/products");
+  const workerLogin = await callWorker("/login", { headers: { cookie: adminCookieHeader } });
+  assert.equal(workerLogin.status, 302);
+  assert.equal(locationPath(workerLogin), "/products");
+  const expressRoot = await nativeFetch(`${expressBaseUrl}/`, { redirect: "manual" });
+  assert.equal(expressRoot.status, 302);
+  assert.equal(locationPath(expressRoot), "/dashboard");
+  const workerRoot = await callWorker("/");
+  assert.equal(workerRoot.status, 302);
+  assert.equal(locationPath(workerRoot), "/dashboard");
+});
+
+test("unauthenticated catalog writes return 401 and catalog reads stay public", async () => {
+  for (const collection of ["products", "brands", "categories"]) {
+    const path = `/api/${collection}`;
+    const beforeCount = memoryDb.dump(collection).length;
+    const expressWrite = await nativeFetch(`${expressBaseUrl}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Nope" }),
+    });
+    assert.equal(expressWrite.status, 401);
+    assert.deepEqual(await expressWrite.json(), { error: "Authentication required" });
+    const workerWrite = await callWorker(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-test-anonymous": "1" },
+      body: JSON.stringify({ name: "Nope" }),
+    });
+    assert.equal(workerWrite.status, 401);
+    assert.deepEqual(await workerWrite.json(), { error: "Authentication required" });
+    assert.equal(memoryDb.dump(collection).length, beforeCount);
+    const expressRead = await nativeFetch(`${expressBaseUrl}${path}`);
+    assert.equal(expressRead.status, 200);
+    assert.ok(Array.isArray((await expressRead.json()).items));
+    const workerRead = await callWorker(path);
+    assert.equal(workerRead.status, 200);
+    assert.ok(Array.isArray((await workerRead.json()).items));
+  }
 });
 

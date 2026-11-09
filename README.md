@@ -56,10 +56,14 @@ Features are delivered by specialized agents orchestrated by Orca Desktop, speci
 | Method | Path | Body |
 |---|---|---|
 | GET | `/` | Redirects to `/dashboard`. |
-| GET | `/dashboard` | React dashboard page. |
-| GET | `/products` | React product page. |
-| GET | `/brands` | React brand page. |
-| GET | `/categories` | React category page. |
+| GET | `/dashboard` | React dashboard page. Public. |
+| GET | `/login` | React login page. |
+| GET | `/products` | React product page. Requires the admin cookie. |
+| GET | `/brands` | React brand page. Requires the admin cookie. |
+| GET | `/categories` | React category page. Requires the admin cookie. |
+| POST | `/api/auth/login` | `{ "username", "password" }`, `{ "email", "password" }`, or `{ "account", "password" }`. Returns `{ "user" }` and sets the admin cookie. |
+| GET | `/api/auth/session` | Returns `{ "authenticated": true, "user" }` or `{ "authenticated": false }`. |
+| POST | `/api/auth/logout` | Clears the admin cookie and returns `{ "ok": true }`. |
 | GET | `/api/products` | Lists products. |
 | POST | `/api/products` | `{ "name", "sku", "price", "brandId", "categoryId", "description", "imageUrl", "quantity" }` with optional `published` and optional `imageFile`. |
 | PUT | `/api/products/<id>` | Same fields as create, including `brandId`, optional `published`, and optional `imageFile`. |
@@ -73,3 +77,5 @@ Features are delivered by specialized agents orchestrated by Orca Desktop, speci
 | POST | `/api/brands` | `{ "name", "description" }`. |
 | PUT | `/api/brands/<id>` | Same fields as create. |
 | DELETE | `/api/brands/<id>` | Deletes a brand that has no products. |
+
+Catalog `POST`, `PUT`, and `DELETE` require the admin cookie. Catalog `GET` stays public so the Dashboard can load without a session.

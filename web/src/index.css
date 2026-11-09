@@ -54,6 +54,21 @@ button {
   font-weight: bold;
 }
 
+.nav-auth {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 0 16px 4px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #5c6775;
+  font: inherit;
+  cursor: pointer;
+}
+
 .header {
   display: flex;
   justify-content: space-between;
